@@ -8,6 +8,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import ru.ryadom.safety.telegram.TelegramCore
 import ru.ryadom.safety.ui.RyadomApp
+import ru.ryadom.safety.vk.VkCore
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -20,6 +21,7 @@ class MainActivity : ComponentActivity() {
         }
 
         TelegramCore.ensureStarted(applicationContext)
+        VkCore.ensureStarted(applicationContext)
 
         setContent {
             RyadomApp()
