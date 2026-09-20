@@ -44,6 +44,30 @@ class RiskEngineTest {
     }
 
     @Test
+    fun mildAmbiguousInsultStaysLow() {
+        val result = RiskEngine.analyze("ну ты дурак конечно")
+        assertTrue(result.first < 20)
+    }
+
+    @Test
+    fun directHarshInsultAlertsParent() {
+        val result = RiskEngine.analyze("ты мразь")
+        assertTrue(result.first >= 60)
+    }
+
+    @Test
+    fun directPersonalInsultIsNotIgnored() {
+        val result = RiskEngine.analyze("ты дебил")
+        assertTrue(result.first >= 35)
+    }
+
+    @Test
+    fun aggressiveHumiliationIsHighRisk() {
+        val result = RiskEngine.analyze("ты сука, заткнись, всем противно с тобой")
+        assertTrue(result.first >= 70)
+    }
+
+    @Test
     fun ordinaryMessageIsZero() {
         val result = RiskEngine.analyze("Привет, ты сделал домашку?")
         assertEquals(0, result.first)
