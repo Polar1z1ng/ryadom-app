@@ -16,9 +16,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Cache official TDLib Android build
+      - name: Restore official TDLib Android build
         id: tdlib-cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: .tdlib-out
           key: tdlib-android-arm64-d1085f9cebc5a62379991ae1652673954f229c1f
@@ -32,6 +32,13 @@ jobs:
           git clone --depth 1 https://github.com/tdlib/td.git tdlib-source
           cd tdlib-source/example/android
           docker build             --build-arg COMMIT_HASH=d1085f9cebc5a62379991ae1652673954f229c1f             --build-arg TDLIB_INTERFACE=Java             --output "$GITHUB_WORKSPACE/.tdlib-out"             .
+
+      - name: Save official TDLib Android build
+        if: steps.tdlib-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .tdlib-out
+          key: tdlib-android-arm64-d1085f9cebc5a62379991ae1652673954f229c1f
 
       - name: Inject TDLib Java API and native libraries
         run: |
