@@ -37,7 +37,7 @@
         </service>
 
         <service
-            android:name=".service.SafetyNotificationListener"
+            android:name=".SafetyNotificationListener"
             android:exported="false"
             android:label="Рядом — VK и SMS"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">

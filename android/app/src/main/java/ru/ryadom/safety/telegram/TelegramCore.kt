@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.drinkless.tdlib.Client
 import org.drinkless.tdlib.TdApi
-import ru.ryadom.safety.rules.RiskEngine
+import ru.ryadom.safety.RiskEngine
 import ru.ryadom.safety.storage.AlertEvent
 import ru.ryadom.safety.storage.AlertStore
 import java.text.SimpleDateFormat
@@ -75,6 +75,10 @@ object TelegramCore {
     fun submitEmailCode(code: String) =
         send(TdApi.CheckAuthenticationEmailCode(TdApi.EmailAddressAuthenticationCode(code.trim())))
 
+    fun resumePrompt() {
+        presentAuthorizationState(currentAuthorizationState)
+    }
+
     fun logout(context: Context) {
         send(TdApi.LogOut())
         SecretStore.clearTelegramCredentials(context)
@@ -82,7 +86,10 @@ object TelegramCore {
 
     private fun handle(obj: TdApi.Object) {
         when (obj) {
-            is TdApi.UpdateAuthorizationState -> handleAuthorization(obj.authorizationState)
+            is TdApi.UpdateAuthorizationState -> {
+                currentAuthorizationState = obj.authorizationState
+                presentAuthorizationState(obj.authorizationState)
+            }
             is TdApi.UpdateNewChat -> chatTitles[obj.chat.id] = obj.chat.title
             is TdApi.UpdateChatTitle -> chatTitles[obj.chatId] = obj.title
             is TdApi.UpdateNewMessage -> analyzeMessage(obj.message.chatId, obj.message.content)
@@ -90,10 +97,8 @@ object TelegramCore {
         }
     }
 
-    private fun handleAuthorization(auth: TdApi.AuthorizationState) {
-        currentAuthorizationState = auth
+    private fun presentAuthorizationState(auth: TdApi.AuthorizationState?) {
         val context = appContext ?: return
-
         when (auth) {
             is TdApi.AuthorizationStateWaitTdlibParameters -> {
                 if (SecretStore.hasTelegramCredentials(context)) sendTdlibParameters()
@@ -112,6 +117,7 @@ object TelegramCore {
             is TdApi.AuthorizationStateLoggingOut,
             is TdApi.AuthorizationStateClosing,
             is TdApi.AuthorizationStateClosed -> mutableState.value = TelegramState.Starting
+            null -> mutableState.value = TelegramState.Starting
         }
     }
 
