@@ -16,6 +16,7 @@ import java.security.MessageDigest
 
 class MainActivity : Activity() {
     private lateinit var status: TextView
+    private lateinit var diagnostics: TextView
     private lateinit var journal: TextView
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -38,6 +39,7 @@ class MainActivity : Activity() {
             setPadding(dp(20), dp(24), dp(20), dp(40))
         }
         scroll.addView(root)
+
         root.addView(TextView(this).apply {
             text = "Рядом"
             textSize = 30f
@@ -48,7 +50,7 @@ class MainActivity : Activity() {
             textSize = 16f
         })
         root.addView(TextView(this).apply {
-            text = "Приложение не скрывается. Пользователь знает, что опасные сообщения анализируются локально."
+            text = "Анализ выполняется по уведомлениям Android. Если чат открыт на экране и уведомление не создаётся, такой текст эта тестовая версия не увидит."
             textSize = 14f
             setPadding(0, dp(8), 0, dp(16))
         })
@@ -67,7 +69,15 @@ class MainActivity : Activity() {
             setOnClickListener { withPin { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) } }
         })
 
-        root.addView(header("3. Проверка движка"))
+        root.addView(header("3. Диагностика перехвата"))
+        diagnostics = TextView(this).apply { textSize = 14f }
+        root.addView(diagnostics)
+        root.addView(Button(this).apply {
+            text = "Обновить диагностику"
+            setOnClickListener { refresh() }
+        })
+
+        root.addView(header("4. Проверка движка"))
         val input = EditText(this).apply {
             hint = "Например: никому не говори родителям, скинь фото"
             minLines = 3
@@ -84,18 +94,51 @@ class MainActivity : Activity() {
         })
         root.addView(result)
 
-        root.addView(header("4. Последние срабатывания"))
+        root.addView(header("5. Последние срабатывания"))
         journal = TextView(this).apply { textSize = 14f }
         root.addView(journal)
         root.addView(Button(this).apply {
             text = "Очистить журнал"
             setOnClickListener { withPin { prefs("alerts").edit().clear().apply(); refresh() } }
         })
+
         return scroll
     }
 
     private fun refresh() {
-        status.text = if (listenerEnabled()) "✓ Защита сообщений активна" else "⚠ Доступ выключен — сообщения сейчас не проверяются"
+        status.text = if (listenerEnabled()) {
+            "✓ Системное разрешение включено"
+        } else {
+            "⚠ Доступ выключен — сообщения сейчас не проверяются"
+        }
+
+        val d = prefs("diagnostics")
+        val connected = d.getBoolean("listener_connected", false)
+        val stateTime = d.getString("listener_state_time", "—")
+        val source = d.getString("last_source", null)
+        val pkg = d.getString("last_package", null)
+        val text = d.getString("last_text", null)
+        val time = d.getString("last_time", null)
+        val anyPkg = d.getString("last_package_any", null)
+        val anyTime = d.getString("last_package_any_time", null)
+
+        diagnostics.text = buildString {
+            append(if (connected) "✓ Служба перехвата подключена" else "⚠ Служба перехвата пока не подтвердила подключение")
+            append("\nСтатус обновлён: ").append(stateTime)
+            if (source != null) {
+                append("\n\nПоследнее целевое уведомление:")
+                append("\n").append(source).append(" • ").append(time ?: "—")
+                append("\nПакет: ").append(pkg ?: "—")
+                append("\nТекст: ").append(text ?: "—")
+            } else {
+                append("\n\nЦелевых уведомлений Telegram/VK/SMS пока не перехвачено.")
+            }
+            if (anyPkg != null) {
+                append("\n\nПоследний пакет, который вообще увидела служба:")
+                append("\n").append(anyPkg).append(" • ").append(anyTime ?: "—")
+            }
+        }
+
         journal.text = prefs("alerts").getString("log", "Срабатываний пока нет.") ?: "Срабатываний пока нет."
     }
 
@@ -103,19 +146,31 @@ class MainActivity : Activity() {
         (Settings.Secure.getString(contentResolver, "enabled_notification_listeners") ?: "").contains(packageName)
 
     private fun hasPin() = prefs("security").contains("pin")
-    private fun hash(s: String) = MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
+
+    private fun hash(s: String) =
+        MessageDigest.getInstance("SHA-256").digest(s.toByteArray()).joinToString("") { "%02x".format(it) }
 
     private fun withPin(action: () -> Unit) {
-        if (!hasPin()) { action(); return }
+        if (!hasPin()) {
+            action()
+            return
+        }
         val i = EditText(this).apply {
             hint = "PIN родителя"
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
         }
-        AlertDialog.Builder(this).setTitle("Подтверждение родителя").setView(i)
+        AlertDialog.Builder(this)
+            .setTitle("Подтверждение родителя")
+            .setView(i)
             .setPositiveButton("Продолжить") { _, _ ->
-                if (hash(i.text.toString()) == prefs("security").getString("pin", "")) action()
-                else Toast.makeText(this, "Неверный PIN", Toast.LENGTH_SHORT).show()
-            }.setNegativeButton("Отмена", null).show()
+                if (hash(i.text.toString()) == prefs("security").getString("pin", "")) {
+                    action()
+                } else {
+                    Toast.makeText(this, "Неверный PIN", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
     }
 
     private fun askNewPin() {
@@ -123,14 +178,20 @@ class MainActivity : Activity() {
             hint = "Минимум 4 цифры"
             inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
         }
-        AlertDialog.Builder(this).setTitle("Новый PIN").setView(i)
+        AlertDialog.Builder(this)
+            .setTitle("Новый PIN")
+            .setView(i)
             .setPositiveButton("Сохранить") { _, _ ->
                 val p = i.text.toString()
                 if (p.length >= 4) {
                     prefs("security").edit().putString("pin", hash(p)).apply()
                     recreate()
-                } else Toast.makeText(this, "PIN слишком короткий", Toast.LENGTH_SHORT).show()
-            }.setNegativeButton("Отмена", null).show()
+                } else {
+                    Toast.makeText(this, "PIN слишком короткий", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
     }
 
     private fun header(t: String) = TextView(this).apply {

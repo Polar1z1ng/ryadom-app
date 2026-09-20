@@ -9,8 +9,8 @@ android {
         applicationId = "ru.ryadom.safety"
         minSdk = 26
         targetSdk = 35
-        versionCode = 3
-        versionName = "0.2.1-test"
+        versionCode = 4
+        versionName = "0.2.2-diagnostics"
     }
     buildTypes {
         release { isMinifyEnabled = false }
