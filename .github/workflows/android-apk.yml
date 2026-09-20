@@ -21,7 +21,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .tdlib-out
-          key: tdlib-android-d1085f9cebc5a62379991ae1652673954f229c1f
+          key: tdlib-android-arm64-d1085f9cebc5a62379991ae1652673954f229c1f
 
       - name: Build official TDLib from Telegram source
         if: steps.tdlib-cache.outputs.cache-hit != 'true'
