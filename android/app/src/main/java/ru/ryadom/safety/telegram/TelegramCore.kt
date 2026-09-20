@@ -33,6 +33,8 @@ object TelegramCore {
         appContext = context.applicationContext
 
         try {
+            System.loadLibrary("cryptox")
+            System.loadLibrary("sslx")
             System.loadLibrary("tdjni")
             client = Client.create(
                 Client.ResultHandler { obj -> handle(obj) },
@@ -138,7 +140,7 @@ object TelegramCore {
         request.apiHash = apiHash
         request.systemLanguageCode = Locale.getDefault().toLanguageTag()
         request.deviceModel = Build.MANUFACTURER + " " + Build.MODEL
-        request.applicationVersion = "Ryadom 0.3"
+        request.applicationVersion = "Ryadom 0.4"
 
         send(request)
     }
