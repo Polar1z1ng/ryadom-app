@@ -14,6 +14,9 @@ android {
         targetSdk = 36
         versionCode = 11
         versionName = "0.4.0-direct"
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
     }
 
     buildTypes {
