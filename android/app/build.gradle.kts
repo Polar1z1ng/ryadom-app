@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "ru.ryadom.safety"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "ru.ryadom.safety"
