@@ -93,6 +93,9 @@ import ru.ryadom.safety.storage.AlertEvent
 import ru.ryadom.safety.storage.AlertStore
 import ru.ryadom.safety.telegram.TelegramCore
 import ru.ryadom.safety.telegram.TelegramState
+import ru.ryadom.safety.sms.SmsDirect
+import ru.ryadom.safety.vk.VkCore
+import ru.ryadom.safety.vk.VkState
 
 private enum class Tab { HOME, EVENTS, SETTINGS }
 
@@ -104,7 +107,10 @@ fun RyadomApp() {
     var dark by remember { mutableStateOf(prefs.getBoolean("dark", systemDark)) }
     var tab by remember { mutableStateOf(Tab.HOME) }
     var telegramSetup by remember { mutableStateOf(false) }
+    var vkSetup by remember { mutableStateOf(false) }
+    var smsSetup by remember { mutableStateOf(false) }
     val telegramState by TelegramCore.state.collectAsState()
+    val vkState by VkCore.state.collectAsState()
     var events by remember { mutableStateOf(AlertStore.read(context)) }
 
     LaunchedEffect(Unit) {
@@ -115,12 +121,20 @@ fun RyadomApp() {
     }
 
     RyadomTheme(darkTheme = dark) {
-        if (telegramSetup) {
-            TelegramSetupScreen(
-                state = telegramState,
-                onBack = { telegramSetup = false }
-            )
-        } else {
+        when {
+            telegramSetup -> {
+                TelegramSetupScreen(
+                    state = telegramState,
+                    onBack = { telegramSetup = false }
+                )
+            }
+            vkSetup -> {
+                VkSetupScreen(onBack = { vkSetup = false })
+            }
+            smsSetup -> {
+                SmsSetupScreen(onBack = { smsSetup = false })
+            }
+            else -> {
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
                 bottomBar = {
@@ -142,11 +156,12 @@ fun RyadomApp() {
                     when (current) {
                         Tab.HOME -> HomeScreen(
                             telegramState = telegramState,
+                            vkState = vkState,
+                            smsReady = SmsDirect.hasPermissions(context),
                             events = events,
                             onTelegram = { telegramSetup = true },
-                            onNotificationSettings = {
-                                context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-                            }
+                            onVk = { vkSetup = true },
+                            onSms = { smsSetup = true }
                         )
                         Tab.EVENTS -> EventsScreen(events)
                         Tab.SETTINGS -> SettingsScreen(
@@ -184,14 +199,16 @@ private fun NavItem(tab: Tab, selected: Tab, label: String, icon: ImageVector, o
 @Composable
 private fun HomeScreen(
     telegramState: TelegramState,
+    vkState: VkState,
+    smsReady: Boolean,
     events: List<AlertEvent>,
     onTelegram: () -> Unit,
-    onNotificationSettings: () -> Unit
+    onVk: () -> Unit,
+    onSms: () -> Unit
 ) {
-    val context = LocalContext.current
-    val listener = notificationListenerEnabled(context.packageName)
     val telegramReady = telegramState is TelegramState.Ready
-    val protectionActive = telegramReady || listener
+    val vkReady = vkState is VkState.Ready
+    val protectionActive = telegramReady || vkReady || smsReady
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -222,12 +239,27 @@ private fun HomeScreen(
         }
         item {
             SourceCard(
+                icon = Icons.Rounded.Send,
+                title = "VK",
+                subtitle = when (vkState) {
+                    VkState.Ready -> "Подключён напрямую через VK API"
+                    VkState.Connecting -> "Подключение к VK…"
+                    is VkState.Error -> "Нужно проверить подключение VK"
+                    VkState.Disconnected -> "Подключить прямой доступ к сообщениям"
+                },
+                active = vkReady,
+                badge = if (vkReady) "НАПРЯМУЮ" else "ПОДКЛЮЧИТЬ",
+                onClick = onVk
+            )
+        }
+        item {
+            SourceCard(
                 icon = Icons.Rounded.Sms,
-                title = "VK и SMS",
-                subtitle = if (listener) "Анализ уведомлений включён" else "Нужно разрешить доступ к уведомлениям",
-                active = listener,
-                badge = "УВЕДОМЛЕНИЯ",
-                onClick = onNotificationSettings
+                title = "SMS",
+                subtitle = if (smsReady) "Системный доступ Android включён" else "Разрешить прямую проверку SMS",
+                active = smsReady,
+                badge = if (smsReady) "НАПРЯМУЮ" else "ПОДКЛЮЧИТЬ",
+                onClick = onSms
             )
         }
         item {
