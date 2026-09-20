@@ -1,86 +1,27 @@
 package ru.ryadom.safety.ui
 
-import android.content.Intent
-import android.net.Uri
-import android.provider.Settings
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.ChevronRight
-import androidx.compose.material.icons.rounded.DarkMode
-import androidx.compose.material.icons.rounded.DeleteOutline
-import androidx.compose.material.icons.rounded.Home
-import androidx.compose.material.icons.rounded.Info
-import androidx.compose.material.icons.rounded.Key
-import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.NotificationsActive
-import androidx.compose.material.icons.rounded.OpenInNew
-import androidx.compose.material.icons.rounded.PhoneAndroid
-import androidx.compose.material.icons.rounded.Security
-import androidx.compose.material.icons.rounded.Send
-import androidx.compose.material.icons.rounded.Settings
-import androidx.compose.material.icons.rounded.Shield
-import androidx.compose.material.icons.rounded.Sms
-import androidx.compose.material.icons.rounded.WarningAmber
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilledTonalButton
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
-import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
+import androidx.compose.material.icons.rounded.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -88,27 +29,31 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import ru.ryadom.safety.R
 import ru.ryadom.safety.security.PinStore
+import ru.ryadom.safety.sms.SmsDirect
 import ru.ryadom.safety.storage.AlertEvent
 import ru.ryadom.safety.storage.AlertStore
 import ru.ryadom.safety.telegram.TelegramCore
 import ru.ryadom.safety.telegram.TelegramState
-import ru.ryadom.safety.sms.SmsDirect
 import ru.ryadom.safety.vk.VkCore
 import ru.ryadom.safety.vk.VkState
 
-private enum class Tab { HOME, EVENTS, SETTINGS }
+private enum class Tab { HOME, EVENTS, STATS, SETTINGS }
+private enum class EventFilter { ALL, ALERT, ATTENTION, INFO }
 
 @Composable
 fun RyadomApp() {
     val context = LocalContext.current
-    val systemDark = isSystemInDarkTheme()
     val prefs = remember { context.getSharedPreferences("ryadom_ui", 0) }
-    var dark by remember { mutableStateOf(prefs.getBoolean("dark", systemDark)) }
+    var introDone by remember { mutableStateOf(prefs.getBoolean("intro_done", false)) }
+    var dark by remember { mutableStateOf(prefs.getBoolean("dark", false)) }
     var tab by remember { mutableStateOf(Tab.HOME) }
     var telegramSetup by remember { mutableStateOf(false) }
     var vkSetup by remember { mutableStateOf(false) }
     var smsSetup by remember { mutableStateOf(false) }
+    var selectedEvent by remember { mutableStateOf<AlertEvent?>(null) }
+
     val telegramState by TelegramCore.state.collectAsState()
     val vkState by VkCore.state.collectAsState()
     var events by remember { mutableStateOf(AlertStore.read(context)) }
@@ -116,84 +61,154 @@ fun RyadomApp() {
     LaunchedEffect(Unit) {
         while (true) {
             events = AlertStore.read(context)
-            delay(1200)
+            delay(1000)
         }
     }
 
     RyadomTheme(darkTheme = dark) {
         when {
-            telegramSetup -> {
-                TelegramSetupScreen(
-                    state = telegramState,
-                    onBack = { telegramSetup = false }
+            !introDone -> IntroScreen {
+                prefs.edit().putBoolean("intro_done", true).apply()
+                introDone = true
+            }
+            telegramSetup -> TelegramSetupScreen(telegramState) { telegramSetup = false }
+            vkSetup -> VkSetupScreen { vkSetup = false }
+            smsSetup -> SmsSetupScreen { smsSetup = false }
+            else -> MainScaffold(
+                tab = tab,
+                onTab = { tab = it },
+                telegramState = telegramState,
+                vkState = vkState,
+                smsReady = SmsDirect.hasPermissions(context),
+                events = events,
+                dark = dark,
+                onDarkChange = {
+                    dark = it
+                    prefs.edit().putBoolean("dark", it).apply()
+                },
+                onTelegram = { telegramSetup = true },
+                onVk = { vkSetup = true },
+                onSms = { smsSetup = true },
+                onEvent = { selectedEvent = it },
+                onClearEvents = {
+                    AlertStore.clear(context)
+                    events = emptyList()
+                }
+            )
+        }
+
+        selectedEvent?.let {
+            EventDetailDialog(event = it, onDismiss = { selectedEvent = null })
+        }
+    }
+}
+
+@Composable
+private fun MainScaffold(
+    tab: Tab,
+    onTab: (Tab) -> Unit,
+    telegramState: TelegramState,
+    vkState: VkState,
+    smsReady: Boolean,
+    events: List<AlertEvent>,
+    dark: Boolean,
+    onDarkChange: (Boolean) -> Unit,
+    onTelegram: () -> Unit,
+    onVk: () -> Unit,
+    onSms: () -> Unit,
+    onEvent: (AlertEvent) -> Unit,
+    onClearEvents: () -> Unit
+) {
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        bottomBar = {
+            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                NavItem(Tab.HOME, tab, "Главная", Icons.Rounded.Home, onTab)
+                NavItem(Tab.EVENTS, tab, "События", Icons.Rounded.EventNote, onTab)
+                NavItem(Tab.STATS, tab, "Статистика", Icons.Rounded.BarChart, onTab)
+                NavItem(Tab.SETTINGS, tab, "Настройки", Icons.Rounded.Settings, onTab)
+            }
+        }
+    ) { padding ->
+        AnimatedContent(
+            targetState = tab,
+            modifier = Modifier.padding(padding),
+            label = "tabs"
+        ) { current ->
+            when (current) {
+                Tab.HOME -> HomeScreen(
+                    telegramState, vkState, smsReady, events,
+                    onTelegram, onVk, onSms, onEvent,
+                    onAllEvents = { onTab(Tab.EVENTS) }
                 )
-            }
-            vkSetup -> {
-                VkSetupScreen(onBack = { vkSetup = false })
-            }
-            smsSetup -> {
-                SmsSetupScreen(onBack = { smsSetup = false })
-            }
-            else -> {
-            Scaffold(
-                containerColor = MaterialTheme.colorScheme.background,
-                bottomBar = {
-                    NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 4.dp
-                    ) {
-                        NavItem(Tab.HOME, tab, "Главная", Icons.Rounded.Home) { tab = Tab.HOME }
-                        NavItem(Tab.EVENTS, tab, "События", Icons.Rounded.NotificationsActive) { tab = Tab.EVENTS }
-                        NavItem(Tab.SETTINGS, tab, "Настройки", Icons.Rounded.Settings) { tab = Tab.SETTINGS }
-                    }
-                }
-            ) { padding ->
-                AnimatedContent(
-                    targetState = tab,
-                    modifier = Modifier.padding(padding),
-                    label = "tabs"
-                ) { current ->
-                    when (current) {
-                        Tab.HOME -> HomeScreen(
-                            telegramState = telegramState,
-                            vkState = vkState,
-                            smsReady = SmsDirect.hasPermissions(context),
-                            events = events,
-                            onTelegram = { telegramSetup = true },
-                            onVk = { vkSetup = true },
-                            onSms = { smsSetup = true }
-                        )
-                        Tab.EVENTS -> EventsScreen(events)
-                        Tab.SETTINGS -> SettingsScreen(
-                            dark = dark,
-                            onDarkChange = {
-                                dark = it
-                                prefs.edit().putBoolean("dark", it).apply()
-                            },
-                            onClearEvents = {
-                                AlertStore.clear(context)
-                                events = emptyList()
-                            },
-                            onTelegram = { telegramSetup = true }
-                        )
-                    }
-                }
+                Tab.EVENTS -> EventsScreen(events, onEvent)
+                Tab.STATS -> StatisticsScreen(events)
+                Tab.SETTINGS -> SettingsScreen(
+                    dark, onDarkChange, onTelegram, onVk, onSms, onClearEvents
+                )
             }
         }
     }
 }
 
 @Composable
-private fun NavItem(tab: Tab, selected: Tab, label: String, icon: ImageVector, onClick: () -> Unit) {
+private fun NavItem(
+    item: Tab,
+    selected: Tab,
+    label: String,
+    icon: ImageVector,
+    onTab: (Tab) -> Unit
+) {
     NavigationBarItem(
-        selected = tab == selected,
-        onClick = onClick,
+        selected = item == selected,
+        onClick = { onTab(item) },
         icon = { Icon(icon, contentDescription = label) },
-        label = { Text(label) },
+        label = { Text(label, fontSize = 11.sp) },
         colors = NavigationBarItemDefaults.colors(
-            indicatorColor = MaterialTheme.colorScheme.primaryContainer
+            selectedIconColor = Bronze,
+            selectedTextColor = Bronze,
+            indicatorColor = Sand.copy(alpha = 0.65f)
         )
     )
+}
+
+@Composable
+private fun IntroScreen(onStart: () -> Unit) {
+    Surface(Modifier.fillMaxSize(), color = Cream) {
+        Column(Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(top = 42.dp, start = 28.dp, end = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.ic_launcher),
+                    contentDescription = "Рядом",
+                    modifier = Modifier.size(90.dp).clip(RoundedCornerShape(24.dp))
+                )
+                Spacer(Modifier.height(10.dp))
+                Text("Рядом", color = DeepBrown, fontSize = 34.sp, fontWeight = FontWeight.Bold)
+                Text("Главное — быть рядом", color = Cocoa, fontSize = 17.sp)
+            }
+
+            Spacer(Modifier.height(10.dp))
+
+            Image(
+                painter = painterResource(R.drawable.mom_boy),
+                contentDescription = "Мама обнимает мальчика",
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxWidth().weight(1f)
+            )
+
+            Button(
+                onClick = onStart,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 18.dp).height(54.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Bronze)
+            ) {
+                Text("Начать", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            }
+        }
+    }
 }
 
 @Composable
@@ -204,354 +219,357 @@ private fun HomeScreen(
     events: List<AlertEvent>,
     onTelegram: () -> Unit,
     onVk: () -> Unit,
-    onSms: () -> Unit
+    onSms: () -> Unit,
+    onEvent: (AlertEvent) -> Unit,
+    onAllEvents: () -> Unit
 ) {
     val telegramReady = telegramState is TelegramState.Ready
     val vkReady = vkState is VkState.Ready
-    val protectionActive = telegramReady || vkReady || smsReady
+    val activeCount = listOf(telegramReady, vkReady, smsReady).count { it }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp, 22.dp, 20.dp, 30.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+        contentPadding = PaddingValues(18.dp, 16.dp, 18.dp, 26.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        item { Header() }
+        item { ProtectionCard(activeCount) }
         item {
-            BrandHeader()
+            Text("Подключенные сервисы", fontWeight = FontWeight.Bold, fontSize = 17.sp)
         }
         item {
-            ProtectionHero(
-                active = protectionActive,
-                eventCount = events.size
-            )
-        }
-        item {
-            SectionTitle("Источники защиты", "Что сейчас контролирует «Рядом»")
-        }
-        item {
-            SourceCard(
-                icon = Icons.Rounded.Send,
+            ServiceCard(
                 title = "Telegram",
-                subtitle = if (telegramReady) "Подключён напрямую через TDLib" else telegramStatusText(telegramState),
+                subtitle = if (telegramReady) "Подключено" else telegramStateLabel(telegramState),
                 active = telegramReady,
-                badge = if (telegramReady) "НАПРЯМУЮ" else "ПОДКЛЮЧИТЬ",
+                brand = "TG",
+                brandColor = Color(0xFF229ED9),
                 onClick = onTelegram
             )
         }
         item {
-            SourceCard(
-                icon = Icons.Rounded.Send,
-                title = "VK",
+            ServiceCard(
+                title = "ВКонтакте",
                 subtitle = when (vkState) {
-                    VkState.Ready -> "Подключён напрямую через VK API"
-                    VkState.Connecting -> "Подключение к VK…"
-                    is VkState.Error -> "Нужно проверить подключение VK"
-                    VkState.Disconnected -> "Подключить прямой доступ к сообщениям"
+                    VkState.Ready -> "Подключено"
+                    VkState.Connecting -> "Подключение…"
+                    is VkState.Error -> "Нужно проверить"
+                    VkState.Disconnected -> "Подключить"
                 },
                 active = vkReady,
-                badge = if (vkReady) "НАПРЯМУЮ" else "ПОДКЛЮЧИТЬ",
+                brand = "VK",
+                brandColor = Color(0xFF2787F5),
                 onClick = onVk
             )
         }
         item {
-            SourceCard(
-                icon = Icons.Rounded.Sms,
+            ServiceCard(
                 title = "SMS",
-                subtitle = if (smsReady) "Системный доступ Android включён" else "Разрешить прямую проверку SMS",
+                subtitle = if (smsReady) "Подключено" else "Разрешить доступ",
                 active = smsReady,
-                badge = if (smsReady) "НАПРЯМУЮ" else "ПОДКЛЮЧИТЬ",
+                brand = "SMS",
+                brandColor = Color(0xFF32B85A),
                 onClick = onSms
             )
         }
         item {
-            PrivacyCard()
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("Последние события", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                TextButton(onClick = onAllEvents) { Text("Все", color = Bronze) }
+            }
+        }
+
+        if (events.isEmpty()) {
+            item { QuietCard() }
+        } else {
+            items(events.take(4)) { event ->
+                EventRow(event) { onEvent(event) }
+            }
         }
     }
 }
 
 @Composable
-private fun BrandHeader() {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(48.dp)
-                .clip(RoundedCornerShape(16.dp))
-                .background(Navy),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                Icons.Rounded.Shield,
-                contentDescription = null,
-                tint = Aqua,
-                modifier = Modifier.size(28.dp)
-            )
-        }
-        Spacer(Modifier.width(13.dp))
+private fun Header() {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Rounded.Menu, null, tint = DeepBrown)
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                "Рядом",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                "Семейная цифровая безопасность",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodyMedium
-            )
+            Text("Рядом", fontSize = 25.sp, fontWeight = FontWeight.Bold)
+            Text("Главное — быть рядом", color = SoftText, fontSize = 12.sp)
         }
+        Icon(Icons.Rounded.Person, null, tint = Bronze)
     }
 }
 
 @Composable
-private fun ProtectionHero(active: Boolean, eventCount: Int) {
-    val colors = if (active) {
-        listOf(Navy, DeepTeal, Color(0xFF247A79))
-    } else {
-        listOf(Color(0xFF4A3824), Color(0xFF7A5A28))
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(30.dp))
-            .background(Brush.linearGradient(colors))
-            .padding(22.dp)
+private fun ProtectionCard(activeCount: Int) {
+    val active = activeCount > 0
+    Card(
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (active) SuccessSoft else Color(0xFFFFF0DA)
+        )
     ) {
-        Column {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    shape = CircleShape,
-                    color = Color.White.copy(alpha = 0.14f)
-                ) {
-                    Icon(
-                        if (active) Icons.Rounded.Security else Icons.Rounded.WarningAmber,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.padding(12.dp).size(28.dp)
-                    )
-                }
-                Spacer(Modifier.width(14.dp))
-                Column {
-                    Text(
-                        if (active) "Защита активна" else "Нужна настройка",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 22.sp
-                    )
-                    Text(
-                        if (active) "Рядом следит за выбранными источниками" else "Подключите хотя бы один источник",
-                        color = Color.White.copy(alpha = 0.78f),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = if (active) Success else Warning
+            ) {
+                Icon(
+                    Icons.Rounded.Shield,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.padding(10.dp).size(26.dp)
+                )
             }
-            Spacer(Modifier.height(24.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                MetricPill("Событий", eventCount.toString())
-                MetricPill("Анализ", "локально")
+            Spacer(Modifier.width(13.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    if (active) "Защита активна" else "Нужна настройка",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp
+                )
+                Text(
+                    if (active) "Мы следим за важными сообщениями" else "Подключите Telegram, VK или SMS",
+                    color = SoftText,
+                    fontSize = 12.sp
+                )
             }
+            Icon(Icons.Rounded.ChevronRight, null, tint = SoftText)
         }
     }
 }
 
 @Composable
-private fun MetricPill(label: String, value: String) {
-    Surface(
-        shape = RoundedCornerShape(18.dp),
-        color = Color.White.copy(alpha = 0.12f)
-    ) {
-        Column(Modifier.padding(horizontal = 15.dp, vertical = 10.dp)) {
-            Text(value, color = Color.White, fontWeight = FontWeight.Bold)
-            Text(label, color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
-        }
-    }
-}
-
-@Composable
-private fun SectionTitle(title: String, subtitle: String) {
-    Column(Modifier.padding(top = 6.dp, bottom = 2.dp)) {
-        Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-        Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
-private fun SourceCard(
-    icon: ImageVector,
+private fun ServiceCard(
     title: String,
     subtitle: String,
     active: Boolean,
-    badge: String,
+    brand: String,
+    brandColor: Color,
     onClick: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = WarmWhite)
     ) {
-        Row(
-            modifier = Modifier.padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+        Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(brandColor),
+                contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    tint = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(12.dp).size(26.dp)
-                )
-            }
-            Spacer(Modifier.width(14.dp))
-            Column(Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
-                    Spacer(Modifier.width(8.dp))
-                    StatusDot(active)
-                }
-                Spacer(Modifier.height(4.dp))
                 Text(
-                    subtitle,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    badge,
-                    color = if (active) Success else MaterialTheme.colorScheme.primary,
+                    brand,
+                    color = Color.White,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp
+                    fontSize = if (brand == "SMS") 10.sp else 16.sp
                 )
             }
-            Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(7.dp).clip(CircleShape).background(if (active) Success else Warning))
+                    Spacer(Modifier.width(5.dp))
+                    Text(subtitle, color = if (active) Success else SoftText, fontSize = 12.sp)
+                }
+            }
+            Icon(Icons.Rounded.ChevronRight, null, tint = SoftText)
         }
     }
 }
 
 @Composable
-private fun StatusDot(active: Boolean) {
-    Box(
-        Modifier
-            .size(9.dp)
-            .clip(CircleShape)
-            .background(if (active) Success else Warning)
-    )
-}
-
-@Composable
-private fun PrivacyCard() {
+private fun QuietCard() {
     Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.48f))
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = WarmWhite)
     ) {
-        Row(Modifier.padding(18.dp), verticalAlignment = Alignment.Top) {
-            Icon(Icons.Rounded.Lock, null, tint = MaterialTheme.colorScheme.primary)
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Rounded.Favorite, null, tint = Success)
             Spacer(Modifier.width(12.dp))
             Column {
-                Text("Приватность по умолчанию", fontWeight = FontWeight.Bold)
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    "Обычные сообщения не показываются родителю. Локально анализируется текст, а в журнал попадают только риск-события.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    style = MaterialTheme.typography.bodyMedium
-                )
+                Text("Всё спокойно", fontWeight = FontWeight.Bold)
+                Text("Тревожных сигналов пока нет", color = SoftText, fontSize = 12.sp)
             }
         }
     }
 }
 
 @Composable
-private fun EventsScreen(events: List<AlertEvent>) {
+private fun EventRow(event: AlertEvent, onClick: () -> Unit) {
+    val color = severityColor(event.score)
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = WarmWhite)
+    ) {
+        Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(shape = CircleShape, color = color.copy(alpha = 0.13f)) {
+                Icon(
+                    if (event.score >= 70) Icons.Rounded.PriorityHigh else Icons.Rounded.Info,
+                    null,
+                    tint = color,
+                    modifier = Modifier.padding(8.dp).size(19.dp)
+                )
+            }
+            Spacer(Modifier.width(11.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    eventTitle(event),
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    event.text,
+                    color = SoftText,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(event.source, color = SoftText, fontSize = 11.sp)
+            }
+            Text(event.time, color = SoftText, fontSize = 11.sp)
+        }
+    }
+}
+
+@Composable
+private fun EventsScreen(events: List<AlertEvent>, onEvent: (AlertEvent) -> Unit) {
+    var filter by remember { mutableStateOf(EventFilter.ALL) }
+    val filtered = when (filter) {
+        EventFilter.ALL -> events
+        EventFilter.ALERT -> events.filter { it.score >= 70 }
+        EventFilter.ATTENTION -> events.filter { it.score in 20..69 }
+        EventFilter.INFO -> events.filter { it.score < 20 }
+    }
+
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(20.dp, 24.dp, 20.dp, 32.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        contentPadding = PaddingValues(18.dp, 18.dp, 18.dp, 26.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         item {
-            Text("События", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text(
-                "Здесь только сообщения, которые превысили порог риска.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("События", fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                Icon(Icons.Rounded.Tune, null, tint = Bronze)
+            }
         }
-
-        if (events.isEmpty()) {
-            item { EmptyEvents() }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                FilterPill("Все", filter == EventFilter.ALL) { filter = EventFilter.ALL }
+                FilterPill("Тревожные", filter == EventFilter.ALERT) { filter = EventFilter.ALERT }
+                FilterPill("Внимание", filter == EventFilter.ATTENTION) { filter = EventFilter.ATTENTION }
+                FilterPill("Инфо", filter == EventFilter.INFO) { filter = EventFilter.INFO }
+            }
+        }
+        if (filtered.isEmpty()) {
+            item { QuietCard() }
         } else {
-            items(events) { event -> EventCard(event) }
+            items(filtered) { event -> EventRow(event) { onEvent(event) } }
         }
     }
 }
 
 @Composable
-private fun EmptyEvents() {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+private fun FilterPill(text: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) Bronze else WarmWhite
     ) {
-        Column(
-            Modifier.fillMaxWidth().padding(30.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
-                Icon(
-                    Icons.Rounded.CheckCircle,
-                    null,
-                    tint = Success,
-                    modifier = Modifier.padding(16.dp).size(32.dp)
+        Text(
+            text,
+            color = if (selected) Color.White else DeepBrown,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            fontSize = 12.sp
+        )
+    }
+}
+
+@Composable
+private fun StatisticsScreen(events: List<AlertEvent>) {
+    val high = events.count { it.score >= 70 }
+    val attention = events.count { it.score in 20..69 }
+    val fraud = events.count { it.categories.contains("мошенн", true) }
+    val abuse = events.count {
+        it.categories.contains("оскорб", true) ||
+            it.categories.contains("трав", true) ||
+            it.categories.contains("угроз", true)
+    }
+    val grooming = events.count {
+        it.categories.contains("грум", true) ||
+            it.categories.contains("сексу", true)
+    }
+    val max = maxOf(1, fraud, abuse, grooming)
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(18.dp, 18.dp, 18.dp, 26.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        item { Text("Статистика", fontSize = 28.sp, fontWeight = FontWeight.Bold) }
+        item {
+            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = WarmWhite)) {
+                Column(Modifier.padding(17.dp)) {
+                    Text("Всего риск-событий", color = SoftText, fontSize = 12.sp)
+                    Text(events.size.toString(), fontSize = 34.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(14.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                        Metric("Тревожные", high, Danger, Modifier.weight(1f))
+                        Metric("Внимание", attention, Warning, Modifier.weight(1f))
+                        Metric("Инфо", events.size - high - attention, Info, Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+        item {
+            Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = WarmWhite)) {
+                Column(Modifier.padding(17.dp)) {
+                    Text("Распределение по типам", fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(12.dp))
+                    StatBar("Мошенничество", fraud, max, Danger)
+                    StatBar("Оскорбления / угрозы", abuse, max, Bronze)
+                    StatBar("Груминг / сексуальные риски", grooming, max, Warning)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Metric(label: String, value: Int, color: Color, modifier: Modifier = Modifier) {
+    Surface(modifier = modifier, shape = RoundedCornerShape(14.dp), color = color.copy(alpha = 0.10f)) {
+        Column(Modifier.padding(10.dp)) {
+            Text(value.toString(), color = color, fontWeight = FontWeight.Bold, fontSize = 21.sp)
+            Text(label, color = SoftText, fontSize = 10.sp)
+        }
+    }
+}
+
+@Composable
+private fun StatBar(label: String, value: Int, max: Int, color: Color) {
+    Column(Modifier.padding(vertical = 7.dp)) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(label, fontSize = 13.sp)
+            Text(value.toString(), fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.height(6.dp))
+        Box(Modifier.fillMaxWidth().height(8.dp).clip(CircleShape).background(Sand.copy(alpha = 0.55f))) {
+            if (value > 0) {
+                Box(
+                    Modifier.fillMaxWidth((value.toFloat() / max.toFloat()).coerceIn(0.08f, 1f))
+                        .fillMaxHeight().clip(CircleShape).background(color)
                 )
             }
-            Spacer(Modifier.height(16.dp))
-            Text("Всё спокойно", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-            Text(
-                "Риск-событий пока нет",
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-private fun EventCard(event: AlertEvent) {
-    val severity = when {
-        event.score >= 70 -> Danger
-        event.score >= 40 -> Warning
-        else -> MaterialTheme.colorScheme.primary
-    }
-
-    Card(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(Modifier.padding(18.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(shape = RoundedCornerShape(12.dp), color = severity.copy(alpha = 0.13f)) {
-                    Text(
-                        event.score.toString() + "/100",
-                        color = severity,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Column(Modifier.weight(1f)) {
-                    Text(event.source + " · " + event.chat, fontWeight = FontWeight.Bold)
-                    Text(event.time, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                }
-            }
-            Spacer(Modifier.height(12.dp))
-            Text(event.categories, color = severity, fontWeight = FontWeight.SemiBold)
-            Spacer(Modifier.height(5.dp))
-            Text(event.text, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -560,15 +578,17 @@ private fun EventCard(event: AlertEvent) {
 private fun SettingsScreen(
     dark: Boolean,
     onDarkChange: (Boolean) -> Unit,
-    onClearEvents: () -> Unit,
-    onTelegram: () -> Unit
+    onTelegram: () -> Unit,
+    onVk: () -> Unit,
+    onSms: () -> Unit,
+    onClearEvents: () -> Unit
 ) {
     val context = LocalContext.current
     var pinDialog by remember { mutableStateOf(false) }
     var clearDialog by remember { mutableStateOf(false) }
 
     if (pinDialog) {
-        PinDialog(onDismiss = { pinDialog = false })
+        PinDialog { pinDialog = false }
     }
     if (clearDialog) {
         AlertDialog(
@@ -581,59 +601,59 @@ private fun SettingsScreen(
                     clearDialog = false
                 }) { Text("Очистить") }
             },
-            dismissButton = { TextButton(onClick = { clearDialog = false }) { Text("Отмена") } }
+            dismissButton = {
+                TextButton(onClick = { clearDialog = false }) { Text("Отмена") }
+            }
         )
     }
 
-    Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(18.dp, 18.dp, 18.dp, 26.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text("Настройки", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text("Защита и внешний вид", color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Spacer(Modifier.height(20.dp))
-
-        SettingsCard {
-            SettingsRow(Icons.Rounded.Send, "Telegram", "Подключение и авторизация", onTelegram)
-            HorizontalDivider()
-            SettingsRow(
-                Icons.Rounded.Key,
-                "PIN родителя",
-                if (PinStore.hasPin(context)) "Установлен" else "Не установлен"
-            ) { pinDialog = true }
-            HorizontalDivider()
-            Row(
-                Modifier.fillMaxWidth().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(Icons.Rounded.DarkMode, null)
-                Spacer(Modifier.width(14.dp))
-                Column(Modifier.weight(1f)) {
-                    Text("Тёмная тема", fontWeight = FontWeight.SemiBold)
-                    Text("Спокойное оформление вечером", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        item { Text("Настройки", fontSize = 28.sp, fontWeight = FontWeight.Bold) }
+        item {
+            Text("Аккаунт", color = SoftText, fontSize = 12.sp)
+            SettingsCard {
+                SettingsLine(Icons.Rounded.Person, "Профиль", "Семейная защита") {}
+                HorizontalDivider()
+                SettingsLine(
+                    Icons.Rounded.Lock,
+                    "Безопасность (PIN-код)",
+                    if (PinStore.hasPin(context)) "PIN установлен" else "Установить PIN"
+                ) { pinDialog = true }
+                HorizontalDivider()
+                SettingsLine(Icons.Rounded.Notifications, "Уведомления", "Системные оповещения") {}
+            }
+        }
+        item {
+            Text("Подключения", color = SoftText, fontSize = 12.sp)
+            SettingsCard {
+                SettingsLine(Icons.Rounded.Send, "Telegram", "Прямое подключение", onTelegram)
+                HorizontalDivider()
+                SettingsLine(Icons.Rounded.Forum, "ВКонтакте", "Прямое подключение", onVk)
+                HorizontalDivider()
+                SettingsLine(Icons.Rounded.Sms, "SMS", "Системный доступ Android", onSms)
+            }
+        }
+        item {
+            Text("Прочее", color = SoftText, fontSize = 12.sp)
+            SettingsCard {
+                Row(Modifier.fillMaxWidth().padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.DarkMode, null, tint = Bronze)
+                    Spacer(Modifier.width(12.dp))
+                    Text("Тёмная тема", modifier = Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                    Switch(checked = dark, onCheckedChange = onDarkChange)
                 }
-                Switch(checked = dark, onCheckedChange = onDarkChange)
-            }
-        }
-
-        Spacer(Modifier.height(14.dp))
-        SettingsCard {
-            SettingsRow(Icons.Rounded.DeleteOutline, "Очистить события", "Удалить локальный журнал") {
-                clearDialog = true
-            }
-        }
-
-        Spacer(Modifier.height(14.dp))
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f))
-        ) {
-            Row(Modifier.padding(18.dp)) {
-                Icon(Icons.Rounded.Info, null, tint = MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.width(12.dp))
-                Text(
-                    "«Рядом» работает открыто: приложение и постоянная защита видимы на телефоне. Скрытого режима нет.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                HorizontalDivider()
+                SettingsLine(Icons.Rounded.HelpOutline, "Помощь", "Как работает «Рядом»") {}
+                HorizontalDivider()
+                SettingsLine(Icons.Rounded.Info, "О приложении", "Рядом · семейная безопасность") {}
+                HorizontalDivider()
+                SettingsLine(Icons.Rounded.DeleteOutline, "Очистить события", "Удалить локальный журнал") {
+                    clearDialog = true
+                }
             }
         }
     }
@@ -641,45 +661,46 @@ private fun SettingsScreen(
 
 @Composable
 private fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = WarmWhite)) {
         Column(content = content)
     }
 }
 
 @Composable
-private fun SettingsRow(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+private fun SettingsLine(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(16.dp),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(15.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(icon, null)
-        Spacer(Modifier.width(14.dp))
+        Icon(icon, null, tint = Bronze)
+        Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(title, fontWeight = FontWeight.SemiBold)
-            Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(subtitle, color = SoftText, fontSize = 11.sp)
         }
-        Icon(Icons.Rounded.ChevronRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(Icons.Rounded.ChevronRight, null, tint = SoftText)
     }
 }
 
 @Composable
 private fun PinDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
-    val already = PinStore.hasPin(context)
+    val exists = PinStore.hasPin(context)
     var current by remember { mutableStateOf("") }
     var fresh by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (already) "Изменить PIN" else "Установить PIN") },
+        title = { Text(if (exists) "Изменить PIN" else "Установить PIN") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (already) {
+                if (exists) {
                     OutlinedTextField(
                         value = current,
                         onValueChange = { current = it.filter(Char::isDigit).take(8) },
@@ -702,7 +723,7 @@ private fun PinDialog(onDismiss: () -> Unit) {
             TextButton(onClick = {
                 when {
                     fresh.length < 4 -> error = "Минимум 4 цифры"
-                    already && !PinStore.verify(context, current) -> error = "Неверный текущий PIN"
+                    exists && !PinStore.verify(context, current) -> error = "Неверный текущий PIN"
                     else -> {
                         PinStore.set(context, fresh)
                         onDismiss()
@@ -715,287 +736,74 @@ private fun PinDialog(onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun TelegramSetupScreen(state: TelegramState, onBack: () -> Unit) {
-    val context = LocalContext.current
-    var apiId by remember { mutableStateOf("") }
-    var apiHash by remember { mutableStateOf("") }
-    var phone by remember { mutableStateOf("") }
-    var code by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var emailCode by remember { mutableStateOf("") }
-    var localError by remember { mutableStateOf("") }
-
-    Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Column(
-            modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.Rounded.ArrowBack, contentDescription = "Назад")
-                }
-                Spacer(Modifier.width(4.dp))
-                Column {
-                    Text("Подключение Telegram", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-                    Text("Прямое подключение через TDLib", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
+private fun EventDetailDialog(event: AlertEvent, onDismiss: () -> Unit) {
+    val color = severityColor(event.score)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(if (event.score >= 70) "Тревожный сигнал" else "Событие")
+                Text(event.time, color = SoftText, fontSize = 12.sp)
             }
-
-            Spacer(Modifier.height(22.dp))
-            StepHero(state)
-            Spacer(Modifier.height(18.dp))
-
-            Card(
-                shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-            ) {
-                Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    when (state) {
-                        TelegramState.NeedCredentials -> {
-                            Text("Шаг 1 · Ключи приложения", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-                            Text(
-                                "Telegram требует API ID и API Hash для любого стороннего клиента. Они сохранятся только на этом телефоне в Android Keystore.",
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            OutlinedTextField(
-                                value = apiId,
-                                onValueChange = { apiId = it.filter(Char::isDigit) },
-                                label = { Text("API ID") },
-                                modifier = Modifier.fillMaxWidth(),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                            )
-                            OutlinedTextField(
-                                value = apiHash,
-                                onValueChange = { apiHash = it.trim() },
-                                label = { Text("API Hash") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            FilledTonalButton(
-                                onClick = {
-                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://my.telegram.org")))
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Icon(Icons.Rounded.OpenInNew, null)
-                                Spacer(Modifier.width(8.dp))
-                                Text("Открыть my.telegram.org")
-                            }
-                            Button(
-                                onClick = {
-                                    val id = apiId.toIntOrNull()
-                                    if (id == null || apiHash.length < 10) {
-                                        localError = "Проверь API ID и API Hash"
-                                    } else {
-                                        localError = ""
-                                        TelegramCore.configure(context, id, apiHash)
-                                    }
-                                },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Продолжить") }
-                        }
-
-                        TelegramState.NeedPhone -> {
-                            AuthTitle("Шаг 2 · Номер телефона", "Введи номер Telegram в международном формате.")
-                            OutlinedTextField(
-                                value = phone,
-                                onValueChange = { phone = it },
-                                label = { Text("+7 999 000-00-00") },
-                                leadingIcon = { Icon(Icons.Rounded.PhoneAndroid, null) },
-                                modifier = Modifier.fillMaxWidth(),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone)
-                            )
-                            PrimaryAction("Получить код") { TelegramCore.submitPhone(phone) }
-                        }
-
-                        TelegramState.NeedCode -> {
-                            AuthTitle("Шаг 3 · Код Telegram", "Telegram пришлёт код в приложение или другим разрешённым способом.")
-                            OutlinedTextField(
-                                value = code,
-                                onValueChange = { code = it.filter(Char::isDigit).take(8) },
-                                label = { Text("Код") },
-                                modifier = Modifier.fillMaxWidth(),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                            )
-                            PrimaryAction("Подтвердить код") { TelegramCore.submitCode(code) }
-                        }
-
-                        is TelegramState.NeedPassword -> {
-                            AuthTitle(
-                                "Двухэтапная защита",
-                                if (state.hint.isBlank()) "Введи пароль Telegram 2FA." else "Подсказка: " + state.hint
-                            )
-                            OutlinedTextField(
-                                value = password,
-                                onValueChange = { password = it },
-                                label = { Text("Пароль 2FA") },
-                                visualTransformation = PasswordVisualTransformation(),
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            PrimaryAction("Войти") { TelegramCore.submitPassword(password) }
-                        }
-
-                        TelegramState.NeedEmail -> {
-                            AuthTitle("Подтверждение e-mail", "Telegram запросил адрес электронной почты.")
-                            OutlinedTextField(
-                                value = email,
-                                onValueChange = { email = it },
-                                label = { Text("E-mail") },
-                                modifier = Modifier.fillMaxWidth(),
-                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email)
-                            )
-                            PrimaryAction("Продолжить") { TelegramCore.submitEmail(email) }
-                        }
-
-                        TelegramState.NeedEmailCode -> {
-                            AuthTitle("Код из e-mail", "Введи код подтверждения Telegram.")
-                            OutlinedTextField(
-                                value = emailCode,
-                                onValueChange = { emailCode = it.trim() },
-                                label = { Text("Код") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            PrimaryAction("Подтвердить") { TelegramCore.submitEmailCode(emailCode) }
-                        }
-
-                        is TelegramState.ConfirmOnOtherDevice -> {
-                            AuthTitle("Подтверди вход", "Telegram просит подтвердить авторизацию на другом устройстве.")
-                            Text(state.link, color = MaterialTheme.colorScheme.primary)
-                        }
-
-                        TelegramState.Ready -> {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                                Surface(shape = CircleShape, color = Success.copy(alpha = 0.14f)) {
-                                    Icon(
-                                        Icons.Rounded.CheckCircle,
-                                        null,
-                                        tint = Success,
-                                        modifier = Modifier.padding(18.dp).size(38.dp)
-                                    )
-                                }
-                                Spacer(Modifier.height(14.dp))
-                                Text("Telegram подключён", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                                Text(
-                                    "«Рядом» получает обновления Telegram напрямую, даже если уведомления выключены.",
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(Modifier.height(16.dp))
-                                PrimaryAction("Готово", onBack)
-                            }
-                        }
-
-                        is TelegramState.Error -> {
-                            AuthTitle("Не получилось подключиться", state.message)
-                            OutlinedButton(
-                                onClick = { TelegramCore.resumePrompt() },
-                                modifier = Modifier.fillMaxWidth()
-                            ) { Text("Исправить и повторить") }
-                        }
-
-                        TelegramState.Starting -> {
-                            Column(
-                                modifier = Modifier.fillMaxWidth().padding(vertical = 26.dp),
-                                horizontalAlignment = Alignment.CenterHorizontally
-                            ) {
-                                CircularProgressIndicator()
-                                Spacer(Modifier.height(14.dp))
-                                Text("Запускаем защищённую сессию Telegram…")
-                            }
-                        }
-                    }
-
-                    if (localError.isNotBlank()) {
-                        Text(localError, color = Danger, fontWeight = FontWeight.SemiBold)
-                    }
-                }
-            }
-
-            Spacer(Modifier.height(14.dp))
-            Card(
-                shape = RoundedCornerShape(22.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f))
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.Top) {
-                    Icon(Icons.Rounded.Lock, null, tint = MaterialTheme.colorScheme.primary)
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(event.source, color = SoftText, fontSize = 12.sp)
+                Text(event.text)
+                Text("Оценка риска", fontWeight = FontWeight.SemiBold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    LinearProgressIndicator(
+                        progress = { event.score / 100f },
+                        modifier = Modifier.weight(1f),
+                        color = color,
+                        trackColor = Sand.copy(alpha = 0.6f)
+                    )
                     Spacer(Modifier.width(10.dp))
+                    Text(event.score.toString() + " / 100", fontWeight = FontWeight.Bold)
+                }
+                Surface(shape = RoundedCornerShape(14.dp), color = color.copy(alpha = 0.10f)) {
                     Text(
-                        "Код входа и пароль 2FA не сохраняются. API Hash хранится зашифрованно в Android Keystore.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        if (event.score >= 90)
+                            "Высокий риск. Рекомендуем обратить внимание и связаться с близким."
+                        else
+                            event.categories,
+                        modifier = Modifier.padding(12.dp),
+                        color = DeepBrown
                     )
                 }
             }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Понятно") }
         }
+    )
+}
+
+private fun eventTitle(event: AlertEvent): String {
+    return when {
+        event.score >= 70 -> "Тревожный сигнал"
+        event.categories.contains("мошенн", true) -> "Потенциальный риск"
+        event.categories.contains("оскорб", true) -> "Оскорбление"
+        event.categories.contains("алког", true) -> "Упоминание алкоголя"
+        else -> "Потенциальный риск"
     }
 }
 
-@Composable
-private fun StepHero(state: TelegramState) {
-    val ready = state is TelegramState.Ready
-    Box(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(28.dp))
-            .background(Brush.linearGradient(listOf(Navy, DeepTeal)))
-            .padding(20.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Surface(shape = CircleShape, color = Color.White.copy(alpha = 0.14f)) {
-                Icon(
-                    Icons.Rounded.Send,
-                    null,
-                    tint = Color.White,
-                    modifier = Modifier.padding(13.dp).size(30.dp)
-                )
-            }
-            Spacer(Modifier.width(14.dp))
-            Column {
-                Text(
-                    if (ready) "Связь установлена" else "Прямой канал Telegram",
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 20.sp
-                )
-                Text(
-                    if (ready) "TDLib получает сообщения напрямую" else "Не зависит от уведомлений Android",
-                    color = Color.White.copy(alpha = 0.75f)
-                )
-            }
-        }
-    }
+private fun severityColor(score: Int): Color = when {
+    score >= 70 -> Danger
+    score >= 20 -> Warning
+    else -> Info
 }
 
-@Composable
-private fun AuthTitle(title: String, description: String) {
-    Text(title, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge)
-    Text(description, color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
-
-@Composable
-private fun PrimaryAction(text: String, onClick: () -> Unit) {
-    Button(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        contentPadding = PaddingValues(vertical = 14.dp),
-        shape = RoundedCornerShape(18.dp)
-    ) {
-        Text(text, fontWeight = FontWeight.Bold)
-    }
-}
-
-private fun telegramStatusText(state: TelegramState): String = when (state) {
-    TelegramState.NeedCredentials -> "Нужны API ID и API Hash"
-    TelegramState.NeedPhone -> "Нужно ввести номер Telegram"
-    TelegramState.NeedCode -> "Ожидается код входа"
-    is TelegramState.NeedPassword -> "Нужен пароль 2FA"
-    TelegramState.NeedEmail -> "Нужно подтверждение e-mail"
-    TelegramState.NeedEmailCode -> "Ожидается код из e-mail"
-    is TelegramState.ConfirmOnOtherDevice -> "Подтвердите вход на другом устройстве"
+private fun telegramStateLabel(state: TelegramState): String = when (state) {
+    TelegramState.Ready -> "Подключено"
+    TelegramState.NeedCredentials -> "Нужна настройка"
+    TelegramState.NeedPhone -> "Войти в Telegram"
+    TelegramState.NeedCode -> "Ввести код"
+    is TelegramState.NeedPassword -> "Пароль 2FA"
+    TelegramState.NeedEmail -> "Подтвердить e-mail"
+    TelegramState.NeedEmailCode -> "Код e-mail"
+    is TelegramState.ConfirmOnOtherDevice -> "Подтвердить вход"
+    TelegramState.Starting -> "Запуск…"
     is TelegramState.Error -> "Ошибка подключения"
-    TelegramState.Starting -> "Запуск защищённой сессии…"
-    TelegramState.Ready -> "Подключён"
-}
-
-@Composable
-private fun notificationListenerEnabled(packageName: String): Boolean {
-    val context = LocalContext.current
-    val enabled = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners") ?: ""
-    return enabled.contains(packageName)
 }

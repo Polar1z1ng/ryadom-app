@@ -22,6 +22,15 @@ val Danger = Color(0xFFD95A43)
 val DangerSoft = Color(0xFFFFE8E1)
 val Info = Color(0xFF8D8981)
 
+// Имена сохранены для экранов подключения, но вся палитра теперь тёплая бежевая.
+val Navy = DeepBrown
+val DeepTeal = Bronze
+val Teal = Caramel
+val Aqua = Sand
+val Mist = Cream
+val Ink = DeepBrown
+val SoftInk = SoftText
+
 private val LightColors = lightColorScheme(
     primary = Bronze,
     onPrimary = Color.White,
