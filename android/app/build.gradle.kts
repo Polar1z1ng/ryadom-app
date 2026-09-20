@@ -12,8 +12,8 @@ android {
         applicationId = "ru.ryadom.safety"
         minSdk = 26
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.3.0-telegram"
+        versionCode = 11
+        versionName = "0.4.0-direct"
     }
 
     buildTypes {
