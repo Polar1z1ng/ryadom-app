@@ -1,25 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+
     <application
         android:allowBackup="false"
         android:label="Рядом"
+        android:icon="@drawable/ic_ryadom_logo"
+        android:roundIcon="@drawable/ic_ryadom_logo"
+        android:usesCleartextTraffic="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
-        <meta-data android:name="isMonitoringTool" android:value="child_monitoring"/>
-        <activity android:name=".MainActivity" android:exported="true">
+
+        <meta-data
+            android:name="isMonitoringTool"
+            android:value="child_monitoring"/>
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+
         <service
-            android:name=".SafetyNotificationListener"
+            android:name=".telegram.TelegramMonitorService"
             android:exported="false"
-            android:label="Рядом — защита сообщений"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Transparent family-safety monitoring of the user's authorized Telegram session"/>
+        </service>
+
+        <service
+            android:name=".service.SafetyNotificationListener"
+            android:exported="false"
+            android:label="Рядом — VK и SMS"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService"/>
             </intent-filter>
         </service>
+
+        <receiver
+            android:name=".telegram.BootReceiver"
+            android:enabled="true"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>
