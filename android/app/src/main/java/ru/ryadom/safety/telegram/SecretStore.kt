@@ -29,7 +29,26 @@ object SecretStore {
         telegramApiId(context) != null && !telegramApiHash(context).isNullOrBlank()
 
     fun clearTelegramCredentials(context: Context) {
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .remove("telegram_api_id")
+            .remove("telegram_api_hash")
+            .apply()
+    }
+
+    fun saveVkToken(context: Context, token: String) {
+        put(context, "vk_access_token", token)
+    }
+
+    fun vkToken(context: Context): String? =
+        get(context, "vk_access_token")
+
+    fun hasVkToken(context: Context): Boolean =
+        !vkToken(context).isNullOrBlank()
+
+    fun clearVkToken(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .remove("vk_access_token")
+            .apply()
     }
 
     private fun key(): SecretKey {
