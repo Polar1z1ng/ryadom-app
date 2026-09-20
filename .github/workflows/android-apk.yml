@@ -8,6 +8,10 @@ on:
       - "android/**"
       - ".github/workflows/android-apk.yml"
 
+concurrency:
+  group: ryadom-android-main
+  cancel-in-progress: true
+
 jobs:
   apk:
     runs-on: ubuntu-latest
