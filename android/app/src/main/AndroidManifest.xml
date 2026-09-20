@@ -39,6 +39,15 @@
         </service>
 
         <service
+            android:name=".vk.VkMonitorService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Transparent family-safety monitoring of the user's authorized VK session"/>
+        </service>
+
+        <service
             android:name=".SafetyNotificationListener"
             android:exported="false"
             android:label="Рядом — VK"
