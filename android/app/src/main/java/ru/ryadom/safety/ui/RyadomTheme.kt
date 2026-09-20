@@ -6,49 +6,62 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// Тёплая фирменная палитра «Рядом», подобранная под выбранную иконку.
-val Navy = Color(0xFF6E452E)
-val DeepTeal = Color(0xFF9A6540)
-val Teal = Color(0xFFC98E5C)
-val Aqua = Color(0xFFF2D2A9)
-val Mist = Color(0xFFFFF8EE)
-val Ink = Color(0xFF2F241D)
-val SoftInk = Color(0xFF74645A)
-val Success = Color(0xFF4E8B61)
-val Warning = Color(0xFFD58B3C)
-val Danger = Color(0xFFB94E42)
+val Cream = Color(0xFFF7EFE5)
+val WarmWhite = Color(0xFFFFFAF4)
+val Sand = Color(0xFFE8D5C0)
+val Caramel = Color(0xFFB87942)
+val Bronze = Color(0xFF8B5A32)
+val DeepBrown = Color(0xFF4A2D19)
+val Cocoa = Color(0xFF6D4A31)
+val SoftText = Color(0xFF7A685B)
+
+val Success = Color(0xFF6F8F61)
+val SuccessSoft = Color(0xFFE7F0DE)
+val Warning = Color(0xFFD7A23D)
+val Danger = Color(0xFFD95A43)
+val DangerSoft = Color(0xFFFFE8E1)
+val Info = Color(0xFF8D8981)
 
 private val LightColors = lightColorScheme(
-    primary = DeepTeal,
+    primary = Bronze,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFF4DEC5),
-    onPrimaryContainer = Ink,
-    secondary = Teal,
-    onSecondary = Color(0xFF3A261B),
-    tertiary = Color(0xFFB56F3D),
-    background = Mist,
-    onBackground = Ink,
-    surface = Color(0xFFFFFCF8),
-    onSurface = Ink,
-    surfaceVariant = Color(0xFFF3E8DC),
-    onSurfaceVariant = SoftInk,
-    outline = Color(0xFFD0BAA7)
+    primaryContainer = Sand,
+    onPrimaryContainer = DeepBrown,
+    secondary = Caramel,
+    onSecondary = Color.White,
+    secondaryContainer = Color(0xFFF3DFC9),
+    onSecondaryContainer = DeepBrown,
+    tertiary = Success,
+    onTertiary = Color.White,
+    background = Cream,
+    onBackground = DeepBrown,
+    surface = WarmWhite,
+    onSurface = DeepBrown,
+    surfaceVariant = Color(0xFFF1E6DA),
+    onSurfaceVariant = SoftText,
+    outline = Color(0xFFD7C4B1),
+    error = Danger,
+    onError = Color.White,
+    errorContainer = DangerSoft,
+    onErrorContainer = Color(0xFF6C241B)
 )
 
 private val DarkColors = darkColorScheme(
-    primary = Color(0xFFE5B17D),
-    onPrimary = Color(0xFF3A2416),
-    primaryContainer = Color(0xFF6E452E),
-    onPrimaryContainer = Color(0xFFFFE8D0),
-    secondary = Color(0xFFD8A172),
-    onSecondary = Color(0xFF321F15),
-    background = Color(0xFF1D1713),
-    onBackground = Color(0xFFF1E7DE),
-    surface = Color(0xFF261E19),
-    onSurface = Color(0xFFF1E7DE),
-    surfaceVariant = Color(0xFF392D26),
-    onSurfaceVariant = Color(0xFFD5C2B4),
-    outline = Color(0xFF9A8170)
+    primary = Color(0xFFD9AC82),
+    onPrimary = Color(0xFF3A210F),
+    primaryContainer = Color(0xFF684425),
+    onPrimaryContainer = Color(0xFFF6DDC5),
+    secondary = Color(0xFFE5B88C),
+    onSecondary = Color(0xFF3B2412),
+    background = Color(0xFF211812),
+    onBackground = Color(0xFFF3E6D8),
+    surface = Color(0xFF2C211A),
+    onSurface = Color(0xFFF3E6D8),
+    surfaceVariant = Color(0xFF3A2C23),
+    onSurfaceVariant = Color(0xFFD8C5B5),
+    outline = Color(0xFF8E7968),
+    error = Color(0xFFFFB4A7),
+    onError = Color(0xFF680008)
 )
 
 @Composable
