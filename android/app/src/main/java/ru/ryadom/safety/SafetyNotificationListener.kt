@@ -35,10 +35,6 @@ class SafetyNotificationListener : NotificationListenerService() {
 
     private fun sourceFor(pkg: String): String? = when {
         pkg.startsWith("com.vkontakte.android") -> "VK"
-        pkg == "com.google.android.apps.messaging" -> "SMS"
-        pkg == "com.samsung.android.messaging" -> "SMS"
-        pkg == "com.android.mms" -> "SMS"
-        pkg == "com.miui.mms" -> "SMS"
         else -> null
     }
 
