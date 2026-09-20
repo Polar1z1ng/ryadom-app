@@ -152,7 +152,7 @@ private fun MainScaffold(
 }
 
 @Composable
-private fun NavItem(
+private fun RowScope.NavItem(
     item: Tab,
     selected: Tab,
     label: String,
