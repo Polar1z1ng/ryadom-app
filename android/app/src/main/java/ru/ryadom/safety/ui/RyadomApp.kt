@@ -174,39 +174,51 @@ private fun NavItem(
 
 @Composable
 private fun IntroScreen(onStart: () -> Unit) {
-    Surface(Modifier.fillMaxSize(), color = Cream) {
+    LaunchedEffect(Unit) {
+        delay(2600)
+        onStart()
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxSize().clickable(onClick = onStart),
+        color = Cream
+    ) {
         Column(Modifier.fillMaxSize()) {
             Column(
-                modifier = Modifier.fillMaxWidth().padding(top = 42.dp, start = 28.dp, end = 28.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 56.dp, start = 28.dp, end = 28.dp, bottom = 10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Image(
                     painter = painterResource(R.drawable.ic_launcher),
                     contentDescription = "Рядом",
-                    modifier = Modifier.size(90.dp).clip(RoundedCornerShape(24.dp))
+                    modifier = Modifier
+                        .size(92.dp)
+                        .clip(RoundedCornerShape(24.dp))
                 )
-                Spacer(Modifier.height(10.dp))
-                Text("Рядом", color = DeepBrown, fontSize = 34.sp, fontWeight = FontWeight.Bold)
-                Text("Главное — быть рядом", color = Cocoa, fontSize = 17.sp)
+                Spacer(Modifier.height(11.dp))
+                Text(
+                    "Рядом",
+                    color = DeepBrown,
+                    fontSize = 36.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Главное — быть рядом",
+                    color = Cocoa,
+                    fontSize = 17.sp
+                )
             }
-
-            Spacer(Modifier.height(10.dp))
 
             Image(
                 painter = painterResource(R.drawable.mom_boy),
                 contentDescription = "Мама обнимает мальчика",
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxWidth().weight(1f)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
             )
-
-            Button(
-                onClick = onStart,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 28.dp, vertical = 18.dp).height(54.dp),
-                shape = RoundedCornerShape(20.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Bronze)
-            ) {
-                Text("Начать", fontWeight = FontWeight.Bold, fontSize = 17.sp)
-            }
         }
     }
 }
