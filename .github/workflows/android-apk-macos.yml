@@ -1,0 +1,85 @@
+name: Build Ryadom APK Fast macOS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/android-apk-macos.yml"
+
+jobs:
+  apk-macos:
+    runs-on: macos-14
+    timeout-minutes: 35
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch pinned TDLib bundle used by Telegram X
+        shell: bash
+        run: |
+          set -euxo pipefail
+          rm -rf .tgx-tdlib
+          git lfs install --skip-repo
+          GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 https://github.com/TGX-Android/tdlib.git .tgx-tdlib
+          test "$(git -C .tgx-tdlib rev-parse HEAD)" = "a032dcf147860482bbf96a6c9206faf63d335ab0"
+
+          git -C .tgx-tdlib lfs pull --include="src/main/libs/27.3.13750724/arm64-v8a/libtdjni.so,openssl/27.3.13750724/arm64-v8a/lib/libcryptox.so,openssl/27.3.13750724/arm64-v8a/lib/libsslx.so"
+
+          rm -rf android/app/src/main/java/org/drinkless
+          mkdir -p android/app/src/main/java/org/drinkless/tdlib
+          cp .tgx-tdlib/src/main/java/org/drinkless/tdlib/Client.java android/app/src/main/java/org/drinkless/tdlib/
+          cp .tgx-tdlib/src/main/java/org/drinkless/tdlib/TdApi.java android/app/src/main/java/org/drinkless/tdlib/
+
+          rm -rf android/app/src/main/jniLibs
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          cp .tgx-tdlib/src/main/libs/27.3.13750724/arm64-v8a/libtdjni.so android/app/src/main/jniLibs/arm64-v8a/
+          cp .tgx-tdlib/openssl/27.3.13750724/arm64-v8a/lib/libcryptox.so android/app/src/main/jniLibs/arm64-v8a/
+          cp .tgx-tdlib/openssl/27.3.13750724/arm64-v8a/lib/libsslx.so android/app/src/main/jniLibs/arm64-v8a/
+
+          test "$(wc -c < android/app/src/main/jniLibs/arm64-v8a/libtdjni.so)" -gt 1000000
+          test "$(wc -c < android/app/src/main/jniLibs/arm64-v8a/libcryptox.so)" -gt 100000
+          test "$(wc -c < android/app/src/main/jniLibs/arm64-v8a/libsslx.so)" -gt 100000
+          ls -lh android/app/src/main/jniLibs/arm64-v8a/
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK 36
+        shell: bash
+        run: |
+          set -euxo pipefail
+          SDKMANAGER="$(command -v sdkmanager || true)"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "9.3.0"
+
+      - name: Run risk engine tests
+        working-directory: android
+        run: gradle :app:testDebugUnitTest --stacktrace
+
+      - name: Build debug APK
+        working-directory: android
+        run: gradle :app:assembleDebug --stacktrace
+
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -f android/app/build/outputs/apk/debug/app-debug.apk
+          ls -lh android/app/build/outputs/apk/debug/app-debug.apk
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -E "lib/arm64-v8a/(libtdjni|libsslx|libcryptox)\.so"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Ryadom-0.4-direct-macos
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
