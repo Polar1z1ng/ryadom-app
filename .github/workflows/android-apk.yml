@@ -15,45 +15,37 @@ concurrency:
 jobs:
   apk:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 35
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore official TDLib Android build
-        id: tdlib-cache
-        uses: actions/cache/restore@v4
-        with:
-          path: .tdlib-out
-          key: tdlib-android-arm64-d1085f9cebc5a62379991ae1652673954f229c1f
-
-      - name: Build official TDLib from Telegram source
-        if: steps.tdlib-cache.outputs.cache-hit != 'true'
-        env:
-          DOCKER_BUILDKIT: "1"
+      - name: Fetch pinned prebuilt TDLib used by Telegram X
+        shell: bash
         run: |
-          rm -rf tdlib-source .tdlib-out
-          git clone --depth 1 https://github.com/tdlib/td.git tdlib-source
-          cd tdlib-source/example/android
-          docker build             --build-arg COMMIT_HASH=d1085f9cebc5a62379991ae1652673954f229c1f             --build-arg TDLIB_INTERFACE=Java             --output "$GITHUB_WORKSPACE/.tdlib-out"             .
+          set -euxo pipefail
+          rm -rf .tgx-tdlib
+          git lfs install --skip-repo
+          GIT_LFS_SKIP_SMUDGE=1 git clone --depth 1 https://github.com/TGX-Android/tdlib.git .tgx-tdlib
+          test "$(git -C .tgx-tdlib rev-parse HEAD)" = "a032dcf147860482bbf96a6c9206faf63d335ab0"
 
-      - name: Save official TDLib Android build
-        if: steps.tdlib-cache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: .tdlib-out
-          key: tdlib-android-arm64-d1085f9cebc5a62379991ae1652673954f229c1f
+          git -C .tgx-tdlib lfs pull --include="src/main/libs/27.3.13750724/arm64-v8a/libtdjni.so,openssl/27.3.13750724/arm64-v8a/lib/libcryptox.so,openssl/27.3.13750724/arm64-v8a/lib/libsslx.so"
 
-      - name: Inject TDLib Java API and native libraries
-        run: |
-          rm -rf .tdlib-unpacked
-          mkdir -p .tdlib-unpacked
-          unzip -q .tdlib-out/tdlib.zip -d .tdlib-unpacked
-          mkdir -p android/app/src/main/java/org
-          cp -R .tdlib-unpacked/tdlib/java/org/drinkless android/app/src/main/java/org/
-          mkdir -p android/app/src/main/jniLibs
-          cp -R .tdlib-unpacked/tdlib/libs/* android/app/src/main/jniLibs/
-          find android/app/src/main/jniLibs -maxdepth 2 -type f -name "*.so" -print
+          rm -rf android/app/src/main/java/org/drinkless
+          mkdir -p android/app/src/main/java/org/drinkless/tdlib
+          cp .tgx-tdlib/src/main/java/org/drinkless/tdlib/Client.java android/app/src/main/java/org/drinkless/tdlib/
+          cp .tgx-tdlib/src/main/java/org/drinkless/tdlib/TdApi.java android/app/src/main/java/org/drinkless/tdlib/
+
+          rm -rf android/app/src/main/jniLibs
+          mkdir -p android/app/src/main/jniLibs/arm64-v8a
+          cp .tgx-tdlib/src/main/libs/27.3.13750724/arm64-v8a/libtdjni.so android/app/src/main/jniLibs/arm64-v8a/
+          cp .tgx-tdlib/openssl/27.3.13750724/arm64-v8a/lib/libcryptox.so android/app/src/main/jniLibs/arm64-v8a/
+          cp .tgx-tdlib/openssl/27.3.13750724/arm64-v8a/lib/libsslx.so android/app/src/main/jniLibs/arm64-v8a/
+
+          test "$(stat -c%s android/app/src/main/jniLibs/arm64-v8a/libtdjni.so)" -gt 1000000
+          test "$(stat -c%s android/app/src/main/jniLibs/arm64-v8a/libcryptox.so)" -gt 100000
+          test "$(stat -c%s android/app/src/main/jniLibs/arm64-v8a/libsslx.so)" -gt 100000
+          ls -lh android/app/src/main/jniLibs/arm64-v8a/
 
       - uses: actions/setup-java@v4
         with:
@@ -61,9 +53,11 @@ jobs:
           java-version: "17"
 
       - name: Install Android SDK 36
+        shell: bash
         run: |
+          set -euxo pipefail
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses >/dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"             "platforms;android-36"             "build-tools;36.0.0"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -77,8 +71,16 @@ jobs:
         working-directory: android
         run: gradle :app:assembleDebug --stacktrace
 
+      - name: Verify APK
+        shell: bash
+        run: |
+          set -euxo pipefail
+          test -f android/app/build/outputs/apk/debug/app-debug.apk
+          ls -lh android/app/build/outputs/apk/debug/app-debug.apk
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -E "lib/arm64-v8a/(libtdjni|libsslx|libcryptox)\.so"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: Ryadom-0.3-Telegram
+          name: Ryadom-0.4-direct
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
