@@ -61,7 +61,7 @@ private enum class EventFilter { ALL, ALERT, ATTENTION, INFO }
 fun RyadomApp() {
     val context = LocalContext.current
     val prefs = remember { context.getSharedPreferences("ryadom_ui", 0) }
-    var introDone by remember { mutableStateOf(prefs.getBoolean("intro_done", false)) }
+    var introDone by remember { mutableStateOf(false) }
     var dark by remember { mutableStateOf(prefs.getBoolean("dark", false)) }
     var tab by remember { mutableStateOf(Tab.HOME) }
     var telegramSetup by remember { mutableStateOf(false) }
@@ -86,7 +86,6 @@ fun RyadomApp() {
     RyadomTheme(darkTheme = dark) {
         when {
             !introDone -> IntroScreen {
-                prefs.edit().putBoolean("intro_done", true).apply()
                 introDone = true
             }
             telegramSetup -> TelegramSetupScreen(telegramState) { telegramSetup = false }
@@ -306,7 +305,7 @@ private fun RowScope.NavItem(
 @Composable
 private fun IntroScreen(onStart: () -> Unit) {
     LaunchedEffect(Unit) {
-        delay(2600)
+        delay(3000)
         onStart()
     }
 
