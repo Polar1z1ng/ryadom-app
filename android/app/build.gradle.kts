@@ -11,8 +11,8 @@ android {
         applicationId = "ru.ryadom.safety"
         minSdk = 26
         targetSdk = 36
-        versionCode = 31
-        versionName = "0.6.1-startup-fix"
+        versionCode = 32
+        versionName = "0.6.2-splash-always"
         ndk {
             abiFilters += "arm64-v8a"
         }
