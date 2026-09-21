@@ -1,7 +1,9 @@
 package ru.ryadom.safety.ui
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
@@ -34,8 +36,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import ru.ryadom.safety.R
 import ru.ryadom.safety.contacts.CloseContactStore
+import ru.ryadom.safety.family.FamilyMember
+import ru.ryadom.safety.family.FamilyStore
+import ru.ryadom.safety.profile.ProfileStore
+import ru.ryadom.safety.profile.UserProfile
 import ru.ryadom.safety.security.PinStore
 import ru.ryadom.safety.sms.SmsDirect
 import ru.ryadom.safety.storage.AlertEvent
@@ -46,6 +53,7 @@ import ru.ryadom.safety.vk.VkCore
 import ru.ryadom.safety.vk.VkState
 
 private enum class Tab { HOME, EVENTS, STATS, SETTINGS }
+private enum class OverlayScreen { FAMILY, PROFILE, NOTIFICATIONS, HELP, ABOUT }
 private enum class EventFilter { ALL, ALERT, ATTENTION, INFO }
 
 @Composable
@@ -59,6 +67,8 @@ fun RyadomApp() {
     var vkSetup by remember { mutableStateOf(false) }
     var smsSetup by remember { mutableStateOf(false) }
     var selectedEvent by remember { mutableStateOf<AlertEvent?>(null) }
+    var overlay by remember { mutableStateOf<OverlayScreen?>(null) }
+    var familyMembers by remember { mutableStateOf(FamilyStore.read(context)) }
 
     val telegramState by TelegramCore.state.collectAsState()
     val vkState by VkCore.state.collectAsState()
@@ -67,6 +77,7 @@ fun RyadomApp() {
     LaunchedEffect(Unit) {
         while (true) {
             events = AlertStore.read(context)
+            familyMembers = FamilyStore.read(context)
             delay(1000)
         }
     }
@@ -80,6 +91,11 @@ fun RyadomApp() {
             telegramSetup -> TelegramSetupScreen(telegramState) { telegramSetup = false }
             vkSetup -> VkSetupScreen { vkSetup = false }
             smsSetup -> SmsSetupScreen { smsSetup = false }
+            overlay == OverlayScreen.FAMILY -> FamilyScreen(onBack = { overlay = null })
+            overlay == OverlayScreen.PROFILE -> ProfileScreen(onBack = { overlay = null })
+            overlay == OverlayScreen.NOTIFICATIONS -> NotificationSettingsScreen(onBack = { overlay = null })
+            overlay == OverlayScreen.HELP -> HelpScreen(onBack = { overlay = null })
+            overlay == OverlayScreen.ABOUT -> AboutScreen(onBack = { overlay = null })
             else -> MainScaffold(
                 tab = tab,
                 onTab = { tab = it },
@@ -87,6 +103,7 @@ fun RyadomApp() {
                 vkState = vkState,
                 smsReady = SmsDirect.hasPermissions(context),
                 events = events,
+                familyCount = familyMembers.size,
                 dark = dark,
                 onDarkChange = {
                     dark = it
@@ -95,6 +112,11 @@ fun RyadomApp() {
                 onTelegram = { telegramSetup = true },
                 onVk = { vkSetup = true },
                 onSms = { smsSetup = true },
+                onOpenFamily = { overlay = OverlayScreen.FAMILY },
+                onOpenProfile = { overlay = OverlayScreen.PROFILE },
+                onOpenNotifications = { overlay = OverlayScreen.NOTIFICATIONS },
+                onOpenHelp = { overlay = OverlayScreen.HELP },
+                onOpenAbout = { overlay = OverlayScreen.ABOUT },
                 onEvent = {
                     AlertStore.markAcknowledged(context, it.id)
                     events = AlertStore.read(context)
@@ -121,46 +143,144 @@ private fun MainScaffold(
     vkState: VkState,
     smsReady: Boolean,
     events: List<AlertEvent>,
+    familyCount: Int,
     dark: Boolean,
     onDarkChange: (Boolean) -> Unit,
     onTelegram: () -> Unit,
     onVk: () -> Unit,
     onSms: () -> Unit,
+    onOpenFamily: () -> Unit,
+    onOpenProfile: () -> Unit,
+    onOpenNotifications: () -> Unit,
+    onOpenHelp: () -> Unit,
+    onOpenAbout: () -> Unit,
     onEvent: (AlertEvent) -> Unit,
     onClearEvents: () -> Unit
 ) {
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        bottomBar = {
-            NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                NavItem(Tab.HOME, tab, "Главная", Icons.Rounded.Home, onTab)
-                NavItem(Tab.EVENTS, tab, "События", Icons.Rounded.EventNote, onTab)
-                NavItem(Tab.STATS, tab, "Статистика", Icons.Rounded.BarChart, onTab)
-                NavItem(Tab.SETTINGS, tab, "Настройки", Icons.Rounded.Settings, onTab)
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
+
+    fun chooseTab(next: Tab) {
+        onTab(next)
+        scope.launch { drawerState.close() }
+    }
+
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                drawerContainerColor = WarmWhite,
+                modifier = Modifier.width(292.dp)
+            ) {
+                Spacer(Modifier.height(30.dp))
+                Row(
+                    Modifier.padding(horizontal = 20.dp, vertical = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Image(
+                        painter = painterResource(R.drawable.ic_launcher),
+                        contentDescription = null,
+                        modifier = Modifier.size(48.dp).clip(RoundedCornerShape(14.dp))
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    Column {
+                        Text("Рядом", fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                        Text("Главное — быть рядом", color = SoftText, fontSize = 11.sp)
+                    }
+                }
+                HorizontalDivider()
+                NavigationDrawerItem(
+                    label = { Text("Главная") },
+                    selected = tab == Tab.HOME,
+                    icon = { Icon(Icons.Rounded.Home, null) },
+                    onClick = { chooseTab(Tab.HOME) },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                NavigationDrawerItem(
+                    label = { Text("Семья") },
+                    selected = false,
+                    icon = { Icon(Icons.Rounded.Groups, null) },
+                    badge = { if (familyCount > 0) Text(familyCount.toString()) },
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onOpenFamily()
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                NavigationDrawerItem(
+                    label = { Text("События") },
+                    selected = tab == Tab.EVENTS,
+                    icon = { Icon(Icons.Rounded.EventNote, null) },
+                    onClick = { chooseTab(Tab.EVENTS) },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                NavigationDrawerItem(
+                    label = { Text("Статистика") },
+                    selected = tab == Tab.STATS,
+                    icon = { Icon(Icons.Rounded.BarChart, null) },
+                    onClick = { chooseTab(Tab.STATS) },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                NavigationDrawerItem(
+                    label = { Text("Настройки") },
+                    selected = tab == Tab.SETTINGS,
+                    icon = { Icon(Icons.Rounded.Settings, null) },
+                    onClick = { chooseTab(Tab.SETTINGS) },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+                NavigationDrawerItem(
+                    label = { Text("Профиль") },
+                    selected = false,
+                    icon = { Icon(Icons.Rounded.Person, null) },
+                    onClick = {
+                        scope.launch { drawerState.close() }
+                        onOpenProfile()
+                    },
+                    modifier = Modifier.padding(NavigationDrawerItemDefaults.ItemPadding)
+                )
             }
         }
-    ) { padding ->
-        AnimatedContent(
-            targetState = tab,
-            modifier = Modifier.padding(padding),
-            label = "tabs"
-        ) { current ->
-            when (current) {
-                Tab.HOME -> HomeScreen(
-                    telegramState, vkState, smsReady, events,
-                    onTelegram, onVk, onSms, onEvent,
-                    onAllEvents = { onTab(Tab.EVENTS) }
-                )
-                Tab.EVENTS -> EventsScreen(events, onEvent)
-                Tab.STATS -> StatisticsScreen(events)
-                Tab.SETTINGS -> SettingsScreen(
-                    dark, onDarkChange, onTelegram, onVk, onSms, onClearEvents
-                )
+    ) {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.background,
+            bottomBar = {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+                    NavItem(Tab.HOME, tab, "Главная", Icons.Rounded.Home, onTab)
+                    NavItem(Tab.EVENTS, tab, "События", Icons.Rounded.EventNote, onTab)
+                    NavItem(Tab.STATS, tab, "Статистика", Icons.Rounded.BarChart, onTab)
+                    NavItem(Tab.SETTINGS, tab, "Настройки", Icons.Rounded.Settings, onTab)
+                }
+            }
+        ) { padding ->
+            AnimatedContent(
+                targetState = tab,
+                modifier = Modifier.padding(padding),
+                label = "tabs"
+            ) { current ->
+                when (current) {
+                    Tab.HOME -> HomeScreen(
+                        telegramState, vkState, smsReady, events, familyCount,
+                        onTelegram, onVk, onSms, onEvent,
+                        onAllEvents = { onTab(Tab.EVENTS) },
+                        onFamily = onOpenFamily,
+                        onMenu = { scope.launch { drawerState.open() } },
+                        onProfile = onOpenProfile
+                    )
+                    Tab.EVENTS -> EventsScreen(events, onEvent)
+                    Tab.STATS -> StatisticsScreen(events)
+                    Tab.SETTINGS -> SettingsScreen(
+                        dark, onDarkChange, onTelegram, onVk, onSms, onClearEvents,
+                        onProfile = onOpenProfile,
+                        onNotifications = onOpenNotifications,
+                        onHelp = onOpenHelp,
+                        onAbout = onOpenAbout
+                    )
+                }
             }
         }
     }
 }
-
 @Composable
 private fun RowScope.NavItem(
     item: Tab,
@@ -193,43 +313,12 @@ private fun IntroScreen(onStart: () -> Unit) {
         modifier = Modifier.fillMaxSize().clickable(onClick = onStart),
         color = Cream
     ) {
-        Column(Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 56.dp, start = 28.dp, end = 28.dp, bottom = 10.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Image(
-                    painter = painterResource(R.drawable.ic_launcher),
-                    contentDescription = "Рядом",
-                    modifier = Modifier
-                        .size(92.dp)
-                        .clip(RoundedCornerShape(24.dp))
-                )
-                Spacer(Modifier.height(11.dp))
-                Text(
-                    "Рядом",
-                    color = DeepBrown,
-                    fontSize = 36.sp,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    "Главное — быть рядом",
-                    color = Cocoa,
-                    fontSize = 17.sp
-                )
-            }
-
-            Image(
-                painter = painterResource(R.drawable.mom_boy),
-                contentDescription = "Мама обнимает мальчика",
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-            )
-        }
+        Image(
+            painter = painterResource(R.drawable.approved_splash),
+            contentDescription = "Рядом — главное быть рядом",
+            contentScale = ContentScale.FillBounds,
+            modifier = Modifier.fillMaxSize()
+        )
     }
 }
 
@@ -239,11 +328,15 @@ private fun HomeScreen(
     vkState: VkState,
     smsReady: Boolean,
     events: List<AlertEvent>,
+    familyCount: Int,
     onTelegram: () -> Unit,
     onVk: () -> Unit,
     onSms: () -> Unit,
     onEvent: (AlertEvent) -> Unit,
-    onAllEvents: () -> Unit
+    onAllEvents: () -> Unit,
+    onFamily: () -> Unit,
+    onMenu: () -> Unit,
+    onProfile: () -> Unit
 ) {
     val telegramReady = telegramState is TelegramState.Ready
     val vkReady = vkState is VkState.Ready
@@ -259,8 +352,9 @@ private fun HomeScreen(
         contentPadding = PaddingValues(18.dp, 16.dp, 18.dp, 26.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item { Header() }
+        item { Header(onMenu = onMenu, onProfile = onProfile) }
         item { ProtectionCard(activeCount) }
+        item { FamilyShortcutCard(familyCount = familyCount, onClick = onFamily) }
         item {
             Text("Подключенные сервисы", fontWeight = FontWeight.Bold, fontSize = 17.sp)
         }
@@ -324,15 +418,52 @@ private fun HomeScreen(
 }
 
 @Composable
-private fun Header() {
+private fun Header(onMenu: () -> Unit, onProfile: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Icon(Icons.Rounded.Menu, null, tint = DeepBrown)
-        Spacer(Modifier.width(14.dp))
+        IconButton(onClick = onMenu) {
+            Icon(Icons.Rounded.Menu, "Меню", tint = DeepBrown)
+        }
+        Spacer(Modifier.width(4.dp))
         Column(Modifier.weight(1f)) {
             Text("Рядом", fontSize = 25.sp, fontWeight = FontWeight.Bold)
             Text("Главное — быть рядом", color = SoftText, fontSize = 12.sp)
         }
-        Icon(Icons.Rounded.Person, null, tint = Bronze)
+        IconButton(onClick = onProfile) {
+            Icon(Icons.Rounded.Person, "Профиль", tint = Bronze)
+        }
+    }
+}
+
+@Composable
+private fun FamilyShortcutCard(familyCount: Int, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Sand.copy(alpha = 0.38f))
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(shape = RoundedCornerShape(14.dp), color = Bronze) {
+                Icon(
+                    Icons.Rounded.Groups,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.padding(10.dp).size(26.dp)
+                )
+            }
+            Spacer(Modifier.width(13.dp))
+            Column(Modifier.weight(1f)) {
+                Text("Семья", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Text(
+                    if (familyCount == 0) "Добавьте близких" else "Близких добавлено: $familyCount",
+                    color = SoftText,
+                    fontSize = 12.sp
+                )
+            }
+            Icon(Icons.Rounded.ChevronRight, null, tint = Bronze)
+        }
     }
 }
 
@@ -649,7 +780,11 @@ private fun SettingsScreen(
     onTelegram: () -> Unit,
     onVk: () -> Unit,
     onSms: () -> Unit,
-    onClearEvents: () -> Unit
+    onClearEvents: () -> Unit,
+    onProfile: () -> Unit,
+    onNotifications: () -> Unit,
+    onHelp: () -> Unit,
+    onAbout: () -> Unit
 ) {
     val context = LocalContext.current
     var pinDialog by remember { mutableStateOf(false) }
@@ -696,7 +831,7 @@ private fun SettingsScreen(
         item {
             Text("Аккаунт", color = SoftText, fontSize = 12.sp)
             SettingsCard {
-                SettingsLine(Icons.Rounded.Person, "Профиль", "Семейная защита") {}
+                SettingsLine(Icons.Rounded.Person, "Профиль", "Личные данные") { onProfile() }
                 HorizontalDivider()
                 SettingsLine(
                     Icons.Rounded.Phone,
@@ -710,7 +845,7 @@ private fun SettingsScreen(
                     if (PinStore.hasPin(context)) "PIN установлен" else "Установить PIN"
                 ) { pinDialog = true }
                 HorizontalDivider()
-                SettingsLine(Icons.Rounded.Notifications, "Уведомления", "Системные оповещения") {}
+                SettingsLine(Icons.Rounded.Notifications, "Уведомления", "Звук, баннеры и разрешения") { onNotifications() }
             }
         }
         item {
@@ -733,9 +868,9 @@ private fun SettingsScreen(
                     Switch(checked = dark, onCheckedChange = onDarkChange)
                 }
                 HorizontalDivider()
-                SettingsLine(Icons.Rounded.HelpOutline, "Помощь", "Как работает «Рядом»") {}
+                SettingsLine(Icons.Rounded.HelpOutline, "Помощь", "Как работает «Рядом»") { onHelp() }
                 HorizontalDivider()
-                SettingsLine(Icons.Rounded.Info, "О приложении", "Рядом · семейная безопасность") {}
+                SettingsLine(Icons.Rounded.Info, "О приложении", "Рядом · семейная безопасность") { onAbout() }
                 HorizontalDivider()
                 SettingsLine(Icons.Rounded.DeleteOutline, "Очистить события", "Удалить локальный журнал") {
                     clearDialog = true
@@ -743,6 +878,358 @@ private fun SettingsScreen(
             }
         }
     }
+}
+
+@Composable
+private fun FamilyScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    var members by remember { mutableStateOf(FamilyStore.read(context)) }
+    var addDialog by remember { mutableStateOf(false) }
+    var deleteMember by remember { mutableStateOf<FamilyMember?>(null) }
+
+    if (addDialog) {
+        AddFamilyMemberDialog(
+            onDismiss = { addDialog = false },
+            onAdd = { name, role, phone ->
+                FamilyStore.add(context, name, role, phone)
+                members = FamilyStore.read(context)
+                addDialog = false
+            }
+        )
+    }
+
+    deleteMember?.let { member ->
+        AlertDialog(
+            onDismissRequest = { deleteMember = null },
+            title = { Text("Убрать из семьи?") },
+            text = { Text(member.name) },
+            confirmButton = {
+                TextButton(onClick = {
+                    FamilyStore.remove(context, member.id)
+                    members = FamilyStore.read(context)
+                    deleteMember = null
+                }) { Text("Убрать", color = Danger) }
+            },
+            dismissButton = { TextButton(onClick = { deleteMember = null }) { Text("Отмена") } }
+        )
+    }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = { SimpleTopBar("Семья", onBack) },
+        floatingActionButton = {
+            ExtendedFloatingActionButton(
+                onClick = { addDialog = true },
+                containerColor = Bronze,
+                contentColor = Color.White,
+                icon = { Icon(Icons.Rounded.PersonAdd, null) },
+                text = { Text("Добавить") }
+            )
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(18.dp, 12.dp, 18.dp, 100.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                Text(
+                    "Близкие",
+                    fontSize = 28.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    "Добавляйте детей, родителей и пожилых близких. Привязку отдельных устройств сделаем через семейное подключение.",
+                    color = SoftText,
+                    fontSize = 13.sp
+                )
+            }
+            if (members.isEmpty()) {
+                item {
+                    Card(
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = WarmWhite)
+                    ) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(22.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(Icons.Rounded.Groups, null, tint = Bronze, modifier = Modifier.size(42.dp))
+                            Spacer(Modifier.height(10.dp))
+                            Text("Пока никого нет", fontWeight = FontWeight.Bold)
+                            Text("Нажмите «Добавить», чтобы создать семейный список.", color = SoftText, fontSize = 12.sp)
+                        }
+                    }
+                }
+            } else {
+                items(members, key = { it.id }) { member ->
+                    Card(
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = WarmWhite)
+                    ) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(15.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Surface(shape = CircleShape, color = Sand.copy(alpha = 0.7f)) {
+                                Icon(
+                                    when {
+                                        member.role.contains("Пожил", true) -> Icons.Rounded.Elderly
+                                        member.role.contains("Реб", true) -> Icons.Rounded.ChildCare
+                                        else -> Icons.Rounded.Person
+                                    },
+                                    null,
+                                    tint = Bronze,
+                                    modifier = Modifier.padding(10.dp).size(25.dp)
+                                )
+                            }
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(member.name, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                                Text(member.role, color = SoftText, fontSize = 12.sp)
+                                if (member.phone.isNotBlank()) {
+                                    Text(member.phone, color = SoftText, fontSize = 11.sp)
+                                }
+                            }
+                            IconButton(onClick = { deleteMember = member }) {
+                                Icon(Icons.Rounded.DeleteOutline, "Убрать", tint = Danger)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AddFamilyMemberDialog(
+    onDismiss: () -> Unit,
+    onAdd: (String, String, String) -> Unit
+) {
+    var name by remember { mutableStateOf("") }
+    var phone by remember { mutableStateOf("") }
+    var role by remember { mutableStateOf("Ребёнок") }
+    var error by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Добавить близкого") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it.take(50) },
+                    label = { Text("Имя") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text("Кто это?", fontWeight = FontWeight.SemiBold)
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf("Ребёнок", "Родитель", "Пожилой").forEach { option ->
+                        FilterChip(
+                            selected = role == option,
+                            onClick = { role = option },
+                            label = { Text(option, fontSize = 11.sp) }
+                        )
+                    }
+                }
+                OutlinedTextField(
+                    value = phone,
+                    onValueChange = { phone = it.take(24) },
+                    label = { Text("Телефон (необязательно)") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (error.isNotBlank()) Text(error, color = Danger)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (name.trim().length < 2) error = "Укажите имя"
+                else onAdd(name, role, phone)
+            }) { Text("Добавить") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
+    )
+}
+
+@Composable
+private fun ProfileScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+    val initial = remember { ProfileStore.read(context) }
+    var name by remember { mutableStateOf(initial.fullName) }
+    var birthDate by remember { mutableStateOf(initial.birthDate) }
+    var saved by remember { mutableStateOf(false) }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = { SimpleTopBar("Профиль", onBack) }
+    ) { padding ->
+        Column(
+            Modifier.fillMaxSize().padding(padding).padding(18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Surface(shape = CircleShape, color = Sand.copy(alpha = 0.7f)) {
+                Icon(
+                    Icons.Rounded.Person,
+                    null,
+                    tint = Bronze,
+                    modifier = Modifier.padding(18.dp).size(36.dp)
+                )
+            }
+            Text("Личные данные", fontSize = 24.sp, fontWeight = FontWeight.Bold)
+            OutlinedTextField(
+                value = name,
+                onValueChange = { name = it.take(80); saved = false },
+                label = { Text("ФИО") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
+                value = birthDate,
+                onValueChange = { birthDate = it.take(10); saved = false },
+                label = { Text("Дата рождения") },
+                placeholder = { Text("ДД.ММ.ГГГГ") },
+                modifier = Modifier.fillMaxWidth()
+            )
+            Button(
+                onClick = {
+                    ProfileStore.save(context, UserProfile(name, birthDate))
+                    saved = true
+                },
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.buttonColors(containerColor = Bronze)
+            ) { Text("Сохранить") }
+            if (saved) Text("Сохранено", color = Success)
+        }
+    }
+}
+
+@Composable
+private fun NotificationSettingsScreen(onBack: () -> Unit) {
+    val context = LocalContext.current
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = { SimpleTopBar("Уведомления", onBack) }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item {
+                Card(shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = WarmWhite)) {
+                    Column(Modifier.padding(18.dp)) {
+                        Icon(Icons.Rounded.NotificationsActive, null, tint = Danger, modifier = Modifier.size(32.dp))
+                        Spacer(Modifier.height(10.dp))
+                        Text("Тревожные уведомления", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text(
+                            "Для риска «Рядом» использует звук, вибрацию и повторные предупреждения при высоком уровне.",
+                            color = SoftText,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            }
+            item {
+                Button(
+                    onClick = {
+                        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        context.startActivity(intent)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = Bronze)
+                ) {
+                    Icon(Icons.Rounded.Settings, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Открыть настройки Android")
+                }
+            }
+            item {
+                Text(
+                    "Там можно включить всплывающие баннеры, звук на заблокированном экране и разрешить уведомления высокой важности.",
+                    color = SoftText,
+                    fontSize = 12.sp
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HelpScreen(onBack: () -> Unit) {
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = { SimpleTopBar("Помощь", onBack) }
+    ) { padding ->
+        LazyColumn(
+            Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(18.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item { HelpCard("Как работает «Рядом»", "Приложение анализирует подключённые источники и сохраняет только риск-события.") }
+            item { HelpCard("Что означают уровни риска", "Чем выше оценка, тем срочнее событие. Высокий риск сопровождается повторными предупреждениями.") }
+            item { HelpCard("Экстренный звонок", "Укажите номер близкого в настройках — тогда в тревоге появится кнопка быстрого звонка.") }
+            item { HelpCard("Семья", "В разделе «Семья» можно вести список близких. Следующим этапом будет привязка отдельных устройств через семейное подключение.") }
+        }
+    }
+}
+
+@Composable
+private fun HelpCard(title: String, body: String) {
+    Card(shape = RoundedCornerShape(18.dp), colors = CardDefaults.cardColors(containerColor = WarmWhite)) {
+        Column(Modifier.padding(16.dp)) {
+            Text(title, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(5.dp))
+            Text(body, color = SoftText, fontSize = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun AboutScreen(onBack: () -> Unit) {
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = { SimpleTopBar("О приложении", onBack) }
+    ) { padding ->
+        Column(
+            Modifier.fillMaxSize().padding(padding).padding(22.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_launcher),
+                contentDescription = null,
+                modifier = Modifier.size(96.dp).clip(RoundedCornerShape(24.dp))
+            )
+            Spacer(Modifier.height(14.dp))
+            Text("Рядом", fontSize = 30.sp, fontWeight = FontWeight.Bold)
+            Text("Главное — быть рядом", color = Cocoa)
+            Spacer(Modifier.height(18.dp))
+            Text(
+                "Семейная безопасность для детей, родителей и пожилых близких.",
+                color = SoftText
+            )
+            Spacer(Modifier.height(8.dp))
+            Text("Версия 0.6.0", color = SoftText, fontSize = 12.sp)
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SimpleTopBar(title: String, onBack: () -> Unit) {
+    TopAppBar(
+        title = { Text(title, fontWeight = FontWeight.Bold) },
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(Icons.Rounded.ArrowBack, "Назад")
+            }
+        },
+        colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+    )
 }
 
 @Composable
