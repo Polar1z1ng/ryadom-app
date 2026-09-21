@@ -1,5 +1,9 @@
 package ru.ryadom.safety.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -31,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import ru.ryadom.safety.R
+import ru.ryadom.safety.contacts.CloseContactStore
 import ru.ryadom.safety.security.PinStore
 import ru.ryadom.safety.sms.SmsDirect
 import ru.ryadom.safety.storage.AlertEvent
@@ -649,9 +654,21 @@ private fun SettingsScreen(
     val context = LocalContext.current
     var pinDialog by remember { mutableStateOf(false) }
     var clearDialog by remember { mutableStateOf(false) }
+    var closeContactDialog by remember { mutableStateOf(false) }
+    var closeNumber by remember { mutableStateOf(CloseContactStore.number(context)) }
 
     if (pinDialog) {
         PinDialog { pinDialog = false }
+    }
+    if (closeContactDialog) {
+        CloseContactDialog(
+            initial = closeNumber,
+            onSaved = {
+                closeNumber = CloseContactStore.number(context)
+                closeContactDialog = false
+            },
+            onDismiss = { closeContactDialog = false }
+        )
     }
     if (clearDialog) {
         AlertDialog(
@@ -680,6 +697,12 @@ private fun SettingsScreen(
             Text("Аккаунт", color = SoftText, fontSize = 12.sp)
             SettingsCard {
                 SettingsLine(Icons.Rounded.Person, "Профиль", "Семейная защита") {}
+                HorizontalDivider()
+                SettingsLine(
+                    Icons.Rounded.Phone,
+                    "Близкий для экстренного звонка",
+                    if (closeNumber.isBlank()) "Указать номер" else closeNumber
+                ) { closeContactDialog = true }
                 HorizontalDivider()
                 SettingsLine(
                     Icons.Rounded.Lock,
@@ -751,6 +774,58 @@ private fun SettingsLine(
 }
 
 @Composable
+private fun CloseContactDialog(
+    initial: String,
+    onSaved: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var number by remember { mutableStateOf(initial) }
+    var error by remember { mutableStateOf("") }
+
+    val callPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Близкий для экстренного звонка") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    "Этот номер будет доступен одной кнопкой при тревожном событии.",
+                    color = SoftText
+                )
+                OutlinedTextField(
+                    value = number,
+                    onValueChange = { number = it.take(24) },
+                    label = { Text("Номер телефона") },
+                    placeholder = { Text("+7 900 000-00-00") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                if (error.isNotBlank()) Text(error, color = Danger)
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val digits = number.filter(Char::isDigit)
+                if (digits.length < 7) {
+                    error = "Проверь номер телефона"
+                } else {
+                    CloseContactStore.save(context, number)
+                    if (!CloseContactStore.hasCallPermission(context)) {
+                        callPermissionLauncher.launch(Manifest.permission.CALL_PHONE)
+                    }
+                    onSaved()
+                }
+            }) { Text("Сохранить") }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Отмена") } }
+    )
+}
+
+@Composable
 private fun PinDialog(onDismiss: () -> Unit) {
     val context = LocalContext.current
     val exists = PinStore.hasPin(context)
@@ -800,7 +875,18 @@ private fun PinDialog(onDismiss: () -> Unit) {
 
 @Composable
 private fun EventDetailDialog(event: AlertEvent, onDismiss: () -> Unit) {
+    val context = LocalContext.current
     val color = severityColor(event.score)
+    val closeNumber = CloseContactStore.number(context)
+    var callAfterPermission by remember { mutableStateOf(false) }
+    val callPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted && callAfterPermission) {
+            CloseContactStore.call(context)
+        }
+        callAfterPermission = false
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -832,6 +918,31 @@ private fun EventDetailDialog(event: AlertEvent, onDismiss: () -> Unit) {
                             event.categories,
                         modifier = Modifier.padding(12.dp),
                         color = DeepBrown
+                    )
+                }
+                if (closeNumber.isNotBlank()) {
+                    Button(
+                        onClick = {
+                            if (CloseContactStore.hasCallPermission(context)) {
+                                CloseContactStore.call(context)
+                            } else {
+                                callAfterPermission = true
+                                callPermissionLauncher.launch(Manifest.permission.CALL_PHONE)
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = Danger),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(Icons.Rounded.Phone, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Позвонить близкому")
+                    }
+                } else if (event.score >= 70) {
+                    Text(
+                        "Добавь номер близкого в Настройки → Близкий для экстренного звонка.",
+                        color = SoftText,
+                        fontSize = 12.sp
                     )
                 }
             }
