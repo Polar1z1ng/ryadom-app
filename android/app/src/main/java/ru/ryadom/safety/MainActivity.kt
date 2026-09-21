@@ -20,11 +20,14 @@ class MainActivity : ComponentActivity() {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 10)
         }
 
-        TelegramCore.ensureStarted(applicationContext)
-        VkCore.ensureStarted(applicationContext)
-
         setContent {
             RyadomApp()
+        }
+
+        // UI must always open even if an external integration fails to initialize.
+        window.decorView.post {
+            runCatching { TelegramCore.ensureStarted(applicationContext) }
+            runCatching { VkCore.ensureStarted(applicationContext) }
         }
     }
 }
