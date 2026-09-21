@@ -1,6 +1,7 @@
 package ru.ryadom.safety.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -89,7 +90,11 @@ fun RyadomApp() {
                 onTelegram = { telegramSetup = true },
                 onVk = { vkSetup = true },
                 onSms = { smsSetup = true },
-                onEvent = { selectedEvent = it },
+                onEvent = {
+                    AlertStore.markAcknowledged(context, it.id)
+                    events = AlertStore.read(context)
+                    selectedEvent = it.copy(acknowledged = true)
+                },
                 onClearEvents = {
                     AlertStore.clear(context)
                     events = emptyList()
@@ -238,6 +243,11 @@ private fun HomeScreen(
     val telegramReady = telegramState is TelegramState.Ready
     val vkReady = vkState is VkState.Ready
     val activeCount = listOf(telegramReady, vkReady, smsReady).count { it }
+    val telegramAlert = events.any { !it.acknowledged && it.source.equals("Telegram", true) }
+    val vkAlert = events.any {
+        !it.acknowledged && (it.source.equals("VK", true) || it.source.contains("ВКонтакте", true))
+    }
+    val smsAlert = events.any { !it.acknowledged && it.source.equals("SMS", true) }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -256,6 +266,7 @@ private fun HomeScreen(
                 active = telegramReady,
                 brand = "TG",
                 brandColor = Color(0xFF229ED9),
+                alert = telegramAlert,
                 onClick = onTelegram
             )
         }
@@ -271,6 +282,7 @@ private fun HomeScreen(
                 active = vkReady,
                 brand = "VK",
                 brandColor = Color(0xFF2787F5),
+                alert = vkAlert,
                 onClick = onVk
             )
         }
@@ -281,6 +293,7 @@ private fun HomeScreen(
                 active = smsReady,
                 brand = "SMS",
                 brandColor = Color(0xFF32B85A),
+                alert = smsAlert,
                 onClick = onSms
             )
         }
@@ -364,35 +377,73 @@ private fun ServiceCard(
     active: Boolean,
     brand: String,
     brandColor: Color,
+    alert: Boolean,
     onClick: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(18.dp),
-        colors = CardDefaults.cardColors(containerColor = WarmWhite)
+        border = if (alert) BorderStroke(2.dp, Danger) else null,
+        colors = CardDefaults.cardColors(
+            containerColor = if (alert) DangerSoft.copy(alpha = 0.48f) else WarmWhite
+        )
     ) {
         Row(Modifier.padding(13.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(brandColor),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    brand,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = if (brand == "SMS") 10.sp else 16.sp
-                )
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, fontWeight = FontWeight.SemiBold, fontSize = 16.sp)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(Modifier.size(7.dp).clip(CircleShape).background(if (active) Success else Warning))
-                    Spacer(Modifier.width(5.dp))
-                    Text(subtitle, color = if (active) Success else SoftText, fontSize = 12.sp)
+            Box(modifier = Modifier.size(48.dp)) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (alert) Danger else brandColor),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        brand,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = if (brand == "SMS") 10.sp else 16.sp
+                    )
+                }
+                if (alert) {
+                    Surface(
+                        modifier = Modifier.align(Alignment.TopEnd).size(21.dp),
+                        shape = CircleShape,
+                        color = Danger,
+                        border = BorderStroke(2.dp, WarmWhite)
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Text("!", color = Color.White, fontWeight = FontWeight.Black, fontSize = 12.sp)
+                        }
+                    }
                 }
             }
-            Icon(Icons.Rounded.ChevronRight, null, tint = SoftText)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    title,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 16.sp,
+                    color = if (alert) Danger else MaterialTheme.colorScheme.onSurface
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(7.dp).clip(CircleShape)
+                            .background(if (alert) Danger else if (active) Success else Warning)
+                    )
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        if (alert) "Новое риск-событие" else subtitle,
+                        color = if (alert) Danger else if (active) Success else SoftText,
+                        fontSize = 12.sp,
+                        fontWeight = if (alert) FontWeight.SemiBold else FontWeight.Normal
+                    )
+                }
+            }
+            Icon(
+                if (alert) Icons.Rounded.PriorityHigh else Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = if (alert) Danger else SoftText
+            )
         }
     }
 }
