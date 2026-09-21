@@ -13,7 +13,9 @@ import android.media.RingtoneManager
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.net.Uri
 import ru.ryadom.safety.MainActivity
+import ru.ryadom.safety.contacts.CloseContactStore
 import ru.ryadom.safety.R
 import ru.ryadom.safety.storage.AlertEvent
 import java.util.concurrent.atomic.AtomicInteger
@@ -95,6 +97,24 @@ object RiskNotifier {
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
             .setOnlyAlertOnce(false)
+
+        val closeNumber = CloseContactStore.number(context)
+        if (closeNumber.isNotBlank() && CloseContactStore.hasCallPermission(context)) {
+            val callIntent = Intent(Intent.ACTION_CALL, Uri.parse("tel:$closeNumber"))
+            val callPendingIntent = PendingIntent.getActivity(
+                context,
+                ids.incrementAndGet(),
+                callIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            builder.addAction(
+                Notification.Action.Builder(
+                    R.drawable.ic_notification,
+                    "Позвонить близкому",
+                    callPendingIntent
+                ).build()
+            )
+        }
 
         if (Build.VERSION.SDK_INT >= 21) {
             builder.setColor(0xFFD95A43.toInt())
