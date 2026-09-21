@@ -24,6 +24,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
@@ -309,16 +310,76 @@ private fun IntroScreen(onStart: () -> Unit) {
         onStart()
     }
 
-    Surface(
-        modifier = Modifier.fillMaxSize().clickable(onClick = onStart),
-        color = Cream
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Cream)
+            .clickable(onClick = onStart)
     ) {
         Image(
-            painter = painterResource(R.drawable.approved_splash),
-            contentDescription = "Рядом — главное быть рядом",
-            contentScale = ContentScale.FillBounds,
-            modifier = Modifier.fillMaxSize()
+            painter = painterResource(R.drawable.mom_boy),
+            contentDescription = "Мама обнимает мальчика",
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.68f)
+                .align(Alignment.BottomCenter)
         )
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.30f)
+                .align(Alignment.BottomCenter)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Color.Transparent, Color(0xCC2F2118))
+                    )
+                )
+        )
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 52.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Image(
+                painter = painterResource(R.drawable.ic_launcher),
+                contentDescription = "Рядом",
+                modifier = Modifier
+                    .size(104.dp)
+                    .clip(RoundedCornerShape(26.dp))
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                "Рядом",
+                fontSize = 38.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color.Black
+            )
+            Text(
+                "Главное — быть рядом",
+                fontSize = 17.sp,
+                color = Cocoa
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 44.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text("Забота сегодня.", color = Color.White, fontSize = 14.sp)
+            Text("Более безопасное завтра.", color = Color.White, fontSize = 14.sp)
+            Spacer(Modifier.height(20.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(9.dp)) {
+                Box(Modifier.size(8.dp).clip(CircleShape).background(Color.White))
+                Box(Modifier.size(8.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.35f)))
+                Box(Modifier.size(8.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.35f)))
+            }
+        }
     }
 }
 
