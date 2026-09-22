@@ -20,20 +20,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Restore and validate approved splash JPEG
+      - name: Validate approved splash JPEG
         shell: bash
         run: |
           set -euxo pipefail
-          mkdir -p android/app/src/main/res/drawable-nodpi
-          rm -f android/app/src/main/res/drawable-nodpi/ryadom_splash_exact.*
-          cat android/app/src/main/splash_q25_parts/part*.txt | tr -d '\\r\\n ' | base64 --decode > android/app/src/main/res/drawable-nodpi/ryadom_splash_exact.jpg
+          test -f android/app/src/main/res/drawable-nodpi/ryadom_splash_exact.jpg
           python3 - <<'PY'
           from pathlib import Path
 
           p = Path("android/app/src/main/res/drawable-nodpi/ryadom_splash_exact.jpg")
           data = p.read_bytes()
-          assert data[:2] == b"\\xff\\xd8", "Splash is not a JPEG"
-          assert data[-2:] == b"\\xff\\xd9", "Splash JPEG is truncated"
+          assert data[:2] == b"\xff\xd8", "Splash is not a JPEG"
+          assert data[-2:] == b"\xff\xd9", "Splash JPEG is truncated"
 
           sof = {0xC0,0xC1,0xC2,0xC3,0xC5,0xC6,0xC7,0xC9,0xCA,0xCB,0xCD,0xCE,0xCF}
           i = 2
@@ -56,7 +54,8 @@ jobs:
               i += 2 + seglen
 
           assert (width, height) == (258, 653), f"Unexpected splash size: {width}x{height}"
-          print(f"Validated splash: {width}x{height}, {len(data)} bytes")
+          assert len(data) == 8095, f"Unexpected splash byte length: {len(data)}"
+          print(f"Validated splash source: {width}x{height}, {len(data)} bytes")
           PY
           file android/app/src/main/res/drawable-nodpi/ryadom_splash_exact.jpg
 
