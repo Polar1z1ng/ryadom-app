@@ -20,6 +20,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Restore and validate approved splash JPEG
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p android/app/src/main/res/drawable-nodpi
+          rm -f android/app/src/main/res/drawable-nodpi/ryadom_splash_exact.*
+          cat android/app/src/main/splash_q25_parts/part*.txt | tr -d '\\r\\n ' | base64 --decode > android/app/src/main/res/drawable-nodpi/ryadom_splash_exact.jpg
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("android/app/src/main/res/drawable-nodpi/ryadom_splash_exact.jpg")
+          data = p.read_bytes()
+          assert data[:2] == b"\\xff\\xd8", "Splash is not a JPEG"
+          assert data[-2:] == b"\\xff\\xd9", "Splash JPEG is truncated"
+
+          sof = {0xC0,0xC1,0xC2,0xC3,0xC5,0xC6,0xC7,0xC9,0xCA,0xCB,0xCD,0xCE,0xCF}
+          i = 2
+          width = height = None
+          while i + 9 < len(data):
+              if data[i] != 0xFF:
+                  i += 1
+                  continue
+              marker = data[i+1]
+              if marker in (0xD8, 0xD9):
+                  i += 2
+                  continue
+              seglen = int.from_bytes(data[i+2:i+4], "big")
+              if marker in sof:
+                  height = int.from_bytes(data[i+5:i+7], "big")
+                  width = int.from_bytes(data[i+7:i+9], "big")
+                  break
+              if seglen < 2:
+                  break
+              i += 2 + seglen
+
+          assert (width, height) == (258, 653), f"Unexpected splash size: {width}x{height}"
+          print(f"Validated splash: {width}x{height}, {len(data)} bytes")
+          PY
+          file android/app/src/main/res/drawable-nodpi/ryadom_splash_exact.jpg
+
       - name: Fetch pinned prebuilt TDLib used by Telegram X
         shell: bash
         run: |
@@ -80,10 +120,22 @@ jobs:
           set -euxo pipefail
           test -f android/app/build/outputs/apk/debug/app-debug.apk
           ls -lh android/app/build/outputs/apk/debug/app-debug.apk
-          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -E "lib/arm64-v8a/(libtdjni|libsslx|libcryptox)\.so"
+          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -E "lib/arm64-v8a/(libtdjni|libsslx|libcryptox)\\.so"
+          SPLASH_PATH="$(unzip -Z1 android/app/build/outputs/apk/debug/app-debug.apk | grep -E 'ryadom_splash_exact.*\\.jpg$' | head -n1)"
+          test -n "$SPLASH_PATH"
+          unzip -p android/app/build/outputs/apk/debug/app-debug.apk "$SPLASH_PATH" > /tmp/ryadom_splash_exact.jpg
+          python3 - <<'PY'
+          from pathlib import Path
+          data = Path("/tmp/ryadom_splash_exact.jpg").read_bytes()
+          assert data[:2] == b"\\xff\\xd8"
+          assert data[-2:] == b"\\xff\\xd9"
+          assert len(data) > 5000
+          print(f"APK splash JPEG verified: {len(data)} bytes")
+          PY
+          file /tmp/ryadom_splash_exact.jpg
 
       - uses: actions/upload-artifact@v4
         with:
-          name: Ryadom-0.6.3-exact-splash
+          name: Ryadom-0.6.4-safe-jpeg-splash
           path: android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
