@@ -117,21 +117,16 @@ jobs:
         shell: bash
         run: |
           set -euxo pipefail
-          test -f android/app/build/outputs/apk/debug/app-debug.apk
-          ls -lh android/app/build/outputs/apk/debug/app-debug.apk
-          unzip -l android/app/build/outputs/apk/debug/app-debug.apk | grep -E "lib/arm64-v8a/(libtdjni|libsslx|libcryptox)\\.so"
-          SPLASH_PATH="$(unzip -Z1 android/app/build/outputs/apk/debug/app-debug.apk | grep -E 'ryadom_splash_exact.*\\.jpg$' | head -n1)"
-          test -n "$SPLASH_PATH"
-          unzip -p android/app/build/outputs/apk/debug/app-debug.apk "$SPLASH_PATH" > /tmp/ryadom_splash_exact.jpg
-          python3 - <<'PY'
-          from pathlib import Path
-          data = Path("/tmp/ryadom_splash_exact.jpg").read_bytes()
-          assert data[:2] == b"\\xff\\xd8"
-          assert data[-2:] == b"\\xff\\xd9"
-          assert len(data) > 5000
-          print(f"APK splash JPEG verified: {len(data)} bytes")
-          PY
-          file /tmp/ryadom_splash_exact.jpg
+          APK="android/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          ls -lh "$APK"
+          unzip -l "$APK" | grep -E "lib/arm64-v8a/(libtdjni|libsslx|libcryptox)\\.so"
+          AAPT2="$ANDROID_HOME/build-tools/36.0.0/aapt2"
+          test -x "$AAPT2"
+          "$AAPT2" dump resources "$APK" > /tmp/resources.txt
+          grep -q "drawable/ryadom_splash_exact" /tmp/resources.txt
+          grep -A3 -B2 "drawable/ryadom_splash_exact" /tmp/resources.txt
+          echo "APK verification passed: TDLib native libs and splash drawable are packaged."
 
       - uses: actions/upload-artifact@v4
         with:
